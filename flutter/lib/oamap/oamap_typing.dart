@@ -50,7 +50,7 @@ bool _oamapOpt(String key, bool def) {
 bool get oamapTypingLowFps =>
     kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
 bool get oamapCommitOnly =>
-    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, true);
+    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, false); // OAMap 0013: default off (real cause was the key event)
 bool get oamapShortSeed =>
     kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, true);
 
