@@ -1,0 +1,88 @@
+diff --git a/.github/oamap/check_hooks.cjs b/.github/oamap/check_hooks.cjs
+index 7bd463f..9b15c0f 100644
+--- a/.github/oamap/check_hooks.cjs
++++ b/.github/oamap/check_hooks.cjs
+@@ -6,6 +6,7 @@ const need = [
+   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', '(o, n) => oamapSoftKeyboardDiff(o, n,'],
+   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.handle(_textController.value, newValue, oamapCommitOnly,'],
+   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.flush(); // OAMap 0012'],
++  ['0013', 'flutter/lib/mobile/pages/remote_page.dart', 'onKeyEvent: oamapSoftKeyFilter,'],
+   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'enableIMEPersonalizedLearning: !kOamapImeNoLearning,'],
+   ['0002', 'flutter/lib/mobile/pages/remote_page.dart', '...oamapImeKeys(wrap, inputModel, isMac),'],
+   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.open();'],
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 2ced8e0..0492963 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -774,7 +774,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+               height: 0,
+               child: !_showEdit
+                   ? Container()
+-                  : TextFormField(
++                  : Focus(
++                      // OAMap 0013: printable key events stay local (oamap_input.dart)
++                      canRequestFocus: false,
++                      skipTraversal: true,
++                      onKeyEvent: oamapSoftKeyFilter,
++                      child: TextFormField(
+                       textInputAction: TextInputAction.newline,
+                       autocorrect: false,
+                       enableIMEPersonalizedLearning: !kOamapImeNoLearning, // OAMap 0001
+@@ -799,6 +804,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+                       //                     and the event will not popup if `KeyEventResult.handled` is returned.
+                       onChanged: handleSoftKeyboardInput,
+                     ).workaroundFreezeLinuxMint(),
++                    ), // OAMap 0013 Focus
+             ),
+           ];
+           if (showCursorPaint) {
+diff --git a/flutter/lib/oamap/oamap_input.dart b/flutter/lib/oamap/oamap_input.dart
+index 2da5a8d..585dc85 100644
+--- a/flutter/lib/oamap/oamap_input.dart
++++ b/flutter/lib/oamap/oamap_input.dart
+@@ -13,6 +13,7 @@
+ import 'dart:async';
+ 
+ import 'package:flutter/services.dart';
++import 'package:flutter/widgets.dart';
+ 
+ const bool kOamapHangulInput =
+     bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
+@@ -147,3 +148,37 @@ class OamapComposeSender {
+     send(old, target);
+   }
+ }
++
++// OAMap add-on 0013: character key events from the soft keyboard stay local.
++//
++// Field report (with 0012 on): Samsung Cheonjiin "안녕하세요" still arrived as
++// "안녕하8요". The phone's own suggestion strip showed "안녕하세요", so the
++// text was right; the "8" came from a hardware-style key event the keyboard
++// also sends for its ㅅㅎ key (labelled 8). Upstream's RawKeyFocusScope above
++// the hidden field forwards key events to the peer as physical keys, so the
++// peer got "8" and the composition step was lost.
++// The hidden field is wrapped in Focus(onKeyEvent: oamapSoftKeyFilter):
++// events that carry a printable character (or are the matching key up /
++// repeat of a printable key) skip the remaining handlers, i.e. they are not
++// forwarded to the peer and go back to the platform / IME, whose text reaches
++// the peer through the text path (0001 / 0012). Enter, Backspace, arrows and
++// other special keys are untouched.
++// Turn off: --dart-define=OAMAP_SOFT_KEY_FILTER=false
++const bool kOamapSoftKeyFilter =
++    bool.fromEnvironment('OAMAP_SOFT_KEY_FILTER', defaultValue: true);
++
++bool oamapPrintable(String? s) {
++  if (s == null || s.isEmpty) return false;
++  final r = s.runes.first;
++  return r >= 0x20 && r != 0x7f;
++}
++
++KeyEventResult oamapSoftKeyFilter(FocusNode node, KeyEvent e) {
++  if (!kOamapSoftKeyFilter) return KeyEventResult.ignored;
++  if (oamapPrintable(e.character)) return KeyEventResult.skipRemainingHandlers;
++  final label = e.logicalKey.keyLabel;
++  if (label.runes.length == 1 && oamapPrintable(label)) {
++    return KeyEventResult.skipRemainingHandlers;
++  }
++  return KeyEventResult.ignored;
++}
