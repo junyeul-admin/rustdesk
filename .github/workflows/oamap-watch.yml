@@ -1,0 +1,35 @@
+# OAMap: our app has the "new version" check turned off (patch 0006), so this
+# weekly run is what tells us a RustDesk release (often with security fixes)
+# is out. It only reads: no build, no push, no secrets. When a newer release
+# exists the run FAILS on purpose, so GitHub sends the usual failure mail;
+# then run "OAMap upstream update" with that tag.
+# Scheduled runs only work from the default branch (oamap-1.5.3 now).
+name: OAMap watch RustDesk releases
+
+on:
+  schedule:
+    - cron: "0 0 * * 1" # Monday 09:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Compare with the latest RustDesk release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/^  VERSION: "\(.*\)".*/\1/p' .github/workflows/oamap-android.yml | head -n 1)
+          export VERSION
+          latest=$(gh api repos/rustdesk/rustdesk/releases/latest --jq .tag_name || echo unknown)
+          node .github/oamap/security_check.cjs upstream "$latest"
+          if [ "$latest" != unknown ] && [ "$(printf '%s\n%s\n' "${latest#v}" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+            echo "::error::RustDesk $latest is out (our build: $VERSION) - run OAMap upstream update with tag=$latest"
+            exit 1
+          fi

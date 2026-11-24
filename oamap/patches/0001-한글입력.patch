@@ -1,5 +1,5 @@
 diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
-index f41ee48..7079e4e 100644
+index f41ee48..68951a9 100644
 --- a/flutter/lib/mobile/pages/remote_page.dart
 +++ b/flutter/lib/mobile/pages/remote_page.dart
 @@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
@@ -25,12 +25,20 @@ index f41ee48..7079e4e 100644
      if (oldValue.isNotEmpty &&
          newValue.isNotEmpty &&
          oldValue[0] == '1' &&
+@@ -733,6 +742,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+                   : TextFormField(
+                       textInputAction: TextInputAction.newline,
+                       autocorrect: false,
++                      enableIMEPersonalizedLearning: !kOamapImeNoLearning, // OAMap 0001
+                       // Flutter 3.16.9 Android.
+                       // `enableSuggestions` causes secure keyboard to be shown.
+                       // https://github.com/flutter/flutter/issues/139143
 diff --git a/flutter/lib/oamap/oamap_input.dart b/flutter/lib/oamap/oamap_input.dart
 new file mode 100644
-index 0000000..3d62691
+index 0000000..bc0243b
 --- /dev/null
 +++ b/flutter/lib/oamap/oamap_input.dart
-@@ -0,0 +1,63 @@
+@@ -0,0 +1,71 @@
 +// OAMap add-on 0001: soft keyboard text diff for composing IMEs (Korean Hangul,
 +// also Japanese / Chinese). Called from
 +// mobile/pages/remote_page.dart _handleNonIOSSoftKeyboardInput.
@@ -45,6 +53,14 @@ index 0000000..3d62691
 +
 +const bool kOamapHangulInput =
 +    bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
++
++// Whatever is typed for the remote PC (passwords too) goes through the hidden
++// field above; ask the phone keyboard not to learn it into its suggestion
++// dictionary (Android IME_FLAG_NO_PERSONALIZED_LEARNING, "incognito" in
++// Gboard). Input itself, Hangul composition included, is unchanged.
++// Turn off at build time: --dart-define=OAMAP_IME_NO_LEARNING=false
++const bool kOamapImeNoLearning =
++    bool.fromEnvironment('OAMAP_IME_NO_LEARNING', defaultValue: true);
 +
 +/// Sends the difference between [oldValue] and [newValue] of the hidden soft
 +/// keyboard field to the peer.

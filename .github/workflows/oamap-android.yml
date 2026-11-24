@@ -338,3 +338,99 @@ jobs:
         with:
           name: oamap-remote-unsigned-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
           path: signed-apk/*.apk
+
+  # OAMap 0007: security checks (separate jobs: never block the apk build)
+  security-scan:
+    name: OAMap security scan (deps, manifest, secrets)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Upstream baseline files (same RustDesk tag)
+        run: |
+          mkdir -p security-report
+          for f in Cargo.lock flutter/pubspec.lock flutter/android/app/src/main/AndroidManifest.xml; do
+            mkdir -p "base/$(dirname "$f")"
+            curl -fsSL --retry 3 -o "base/$f" "https://raw.githubusercontent.com/rustdesk/rustdesk/${VERSION}/$f"
+          done
+
+      - name: Permissions and exported components vs upstream manifest
+        if: ${{ !cancelled() }}
+        run: node .github/oamap/security_check.cjs manifest flutter/android/app/src/main/AndroidManifest.xml base/flutter/android/app/src/main/AndroidManifest.xml
+
+      - name: Secrets never printed (workflow scripts)
+        if: ${{ !cancelled() }}
+        run: node .github/oamap/security_check.cjs secrets .github/workflows/oamap-android.yml .github/oamap/set_server_defaults.py
+
+      - name: Rust crates - cargo audit (RustSec), new vs upstream
+        if: ${{ !cancelled() }}
+        run: |
+          cargo install cargo-audit --locked --quiet
+          cargo audit --json --file Cargo.lock > security-report/cargo-audit-ours.json || true
+          cargo audit --json --no-fetch --file base/Cargo.lock > security-report/cargo-audit-upstream.json || true
+          node .github/oamap/security_check.cjs audit security-report/cargo-audit-ours.json security-report/cargo-audit-upstream.json
+
+      - name: Dart and Rust packages - OSV-Scanner, new vs upstream
+        if: ${{ !cancelled() }}
+        run: |
+          u=https://github.com/google/osv-scanner/releases/latest/download
+          curl -fsSL --retry 3 -o osv-scanner_linux_amd64 "$u/osv-scanner_linux_amd64"
+          curl -fsSL --retry 3 -o osv-sums "$u/osv-scanner_SHA256SUMS"
+          grep ' osv-scanner_linux_amd64$' osv-sums | sha256sum -c -
+          chmod +x osv-scanner_linux_amd64
+          ./osv-scanner_linux_amd64 --format json --lockfile flutter/pubspec.lock --lockfile Cargo.lock > security-report/osv-ours.json || true
+          ./osv-scanner_linux_amd64 --format json --lockfile base/flutter/pubspec.lock --lockfile base/Cargo.lock > security-report/osv-upstream.json || true
+          node .github/oamap/security_check.cjs osv security-report/osv-ours.json security-report/osv-upstream.json
+
+      - name: Newer RustDesk release (the app update check is off)
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh api repos/rustdesk/rustdesk/releases/latest --jq .tag_name || echo unknown)
+          node .github/oamap/security_check.cjs upstream "$latest"
+
+      - name: Upload security report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oamap-security-report-scan
+          path: security-report/
+
+  security-apk-permissions:
+    name: OAMap security - apk permissions vs official apk
+    needs: [build-rustdesk-android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Our apk (this run)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: "*.apk"
+          path: ours-apk
+
+      - name: Compare uses-permission with the official apk
+        run: |
+          mkdir -p security-report
+          sdk="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          aapt2="$sdk/build-tools/$(ls "$sdk/build-tools" | sort -V | tail -n 1)/aapt2"
+          ours=$(find ours-apk -name '*.apk' -type f | head -n 1)
+          if [ -z "$ours" ]; then echo "::error::no apk artifact in this run"; exit 1; fi
+          "$aapt2" dump permissions "$ours" > security-report/apk-permissions-ours.txt
+          if curl -fsSL --retry 3 -o official.apk "https://github.com/rustdesk/rustdesk/releases/download/${VERSION}/rustdesk-${VERSION}-aarch64.apk"; then
+            "$aapt2" dump permissions official.apk > security-report/apk-permissions-official.txt
+            node .github/oamap/security_check.cjs apkperms security-report/apk-permissions-ours.txt security-report/apk-permissions-official.txt
+          else
+            curl -fsSL --retry 3 -o upstream-manifest.xml "https://raw.githubusercontent.com/rustdesk/rustdesk/${VERSION}/flutter/android/app/src/main/AndroidManifest.xml"
+            node .github/oamap/security_check.cjs apkperms security-report/apk-permissions-ours.txt upstream-manifest.xml --source
+          fi
+
+      - name: Upload security report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: oamap-security-report-apk
+          path: security-report/

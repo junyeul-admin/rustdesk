@@ -765,6 +765,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                   : TextFormField(
                       textInputAction: TextInputAction.newline,
                       autocorrect: false,
+                      enableIMEPersonalizedLearning: !kOamapImeNoLearning, // OAMap 0001
                       // Flutter 3.16.9 Android.
                       // `enableSuggestions` causes secure keyboard to be shown.
                       // https://github.com/flutter/flutter/issues/139143

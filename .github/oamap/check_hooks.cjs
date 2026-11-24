@@ -4,6 +4,7 @@
 const fs = require('fs');
 const need = [
   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'oamapSoftKeyboardDiff(oldValue, newValue,'],
+  ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'enableIMEPersonalizedLearning: !kOamapImeNoLearning,'],
   ['0002', 'flutter/lib/mobile/pages/remote_page.dart', '...oamapImeKeys(wrap, inputModel, isMac),'],
   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.open();'],
   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.close();'],

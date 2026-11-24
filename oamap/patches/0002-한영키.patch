@@ -1,5 +1,5 @@
 diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
-index 7079e4e..2989811 100644
+index 68951a9..2c83370 100644
 --- a/flutter/lib/mobile/pages/remote_page.dart
 +++ b/flutter/lib/mobile/pages/remote_page.dart
 @@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
@@ -10,7 +10,7 @@ index 7079e4e..2989811 100644
  import '../../oamap/oamap_input.dart'; // OAMap 0001
  
  final initText = '1' * 1024;
-@@ -1079,6 +1080,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1080,6 +1081,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
        wrap(isMac ? ' Cmd ' : ' Win ', () {
          setState(() => inputModel.command = !inputModel.command);
        }, active: inputModel.command),

@@ -13,6 +13,14 @@
 const bool kOamapHangulInput =
     bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
 
+// Whatever is typed for the remote PC (passwords too) goes through the hidden
+// field above; ask the phone keyboard not to learn it into its suggestion
+// dictionary (Android IME_FLAG_NO_PERSONALIZED_LEARNING, "incognito" in
+// Gboard). Input itself, Hangul composition included, is unchanged.
+// Turn off at build time: --dart-define=OAMAP_IME_NO_LEARNING=false
+const bool kOamapImeNoLearning =
+    bool.fromEnvironment('OAMAP_IME_NO_LEARNING', defaultValue: true);
+
 /// Sends the difference between [oldValue] and [newValue] of the hidden soft
 /// keyboard field to the peer.
 ///

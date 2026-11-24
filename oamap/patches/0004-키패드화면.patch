@@ -1,5 +1,5 @@
 diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
-index 9c1752f..204e2ee 100644
+index 7113619..72c8455 100644
 --- a/flutter/lib/mobile/pages/remote_page.dart
 +++ b/flutter/lib/mobile/pages/remote_page.dart
 @@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
