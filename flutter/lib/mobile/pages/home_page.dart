@@ -8,6 +8,7 @@ import '../../common/widgets/chat_page.dart';
 import '../../models/platform_model.dart';
 import '../../models/state_model.dart';
 import 'connection_page.dart';
+import '../../oamap/oamap_brand.dart'; // OAMap 0008
 
 abstract class PageShape extends Widget {
   final String title = "";
@@ -150,7 +151,7 @@ class HomePageState extends State<HomePage> {
         ],
       );
     }
-    return Text(bind.mainGetAppNameSync());
+    return Text(oamapAppTitle(bind.mainGetAppNameSync())); // OAMap 0008
   }
 }
 

@@ -25,13 +25,14 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_typing.dart'; // OAMap 0008
 import '../../oamap/oamap_pan.dart'; // OAMap 0005
 import '../../oamap/oamap_view.dart'; // OAMap 0004
 import '../../oamap/oamap_session.dart'; // OAMap 0003
 import '../../oamap/oamap_keys.dart'; // OAMap 0002
 import '../../oamap/oamap_input.dart'; // OAMap 0001
 
-final initText = '1' * 1024;
+String get initText => oamapSeed(); // OAMap 0008 (upstream: '1' * 1024)
 
 // Workaround for Android (default input method, Microsoft SwiftKey keyboard) when using physical keyboard.
 // When connecting a physical keyboard, `KeyEvent.physicalKey.usbHidUsage` are wrong is using Microsoft SwiftKey keyboard.
@@ -101,6 +102,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final _uniqueKey = UniqueKey();
   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
   final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
+  final _oamapTypingFps = OamapTypingFps(gFFI); // OAMap 0008
   Timer? _iosKeyboardWorkaroundTimer;
 
   final _blockableOverlayState = BlockableOverlayState();
@@ -302,6 +304,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       );
 
   void onSoftKeyboardChanged(bool visible) {
+    _oamapTypingFps.onKeyboard(visible); // OAMap 0008
     if (!visible) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard

@@ -9,3 +9,12 @@
 
 const bool kOamapUpdateCheck =
     bool.fromEnvironment('OAMAP_UPDATE_CHECK', defaultValue: false);
+
+// OAMap 0008: title on the phone home page (upstream shows the app name,
+// "RustDesk"). The internal app name (config folders, protocol) is unchanged.
+// Change at build time: --dart-define=OAMAP_APP_TITLE=...
+const String kOamapAppTitle =
+    String.fromEnvironment('OAMAP_APP_TITLE', defaultValue: 'OAMap 원격');
+
+String oamapAppTitle(String upstream) =>
+    kOamapAppTitle.isEmpty ? upstream : kOamapAppTitle;

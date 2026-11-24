@@ -1,0 +1,112 @@
+// OAMap add-on 0008: phone keyboard lag while typing Hangul.
+//
+// Field report (Samsung keyboard, Cheonjiin): English typed fast is fine, but
+// Hangul multi-tap (ㄱ x2 = ㅋ, x3 = ㄲ) and long-press (ㄱ held = 4) are
+// misread while connected: the keyboard waits on the app, the app is busy
+// drawing the remote screen, so taps are taken late.
+//
+// Two switches (Settings > OAMap), both read when the keyboard opens:
+//  1. Lower the remote frame rate while the soft keyboard is open
+//     (default on). Temporary only: the per-peer 'custom-fps' setting is put
+//     back right away, and the old rate is sent again when the keyboard closes.
+//  2. Short hidden-field seed: 64 instead of 1024 '1's (default off, for
+//     comparison). The prefix diff (oamap_input.dart) works the same; once
+//     the seed is used up, Backspace on the empty field goes by the key event
+//     route as upstream already does.
+//
+// Turn off at build time: --dart-define=OAMAP_TYPING_TUNE=false
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:settings_ui/settings_ui.dart';
+
+import '../models/model.dart';
+import '../models/platform_model.dart';
+
+const bool kOamapTypingTune =
+    bool.fromEnvironment('OAMAP_TYPING_TUNE', defaultValue: true);
+
+const String kOamapTypingLowFpsKey = 'oamap-typing-low-fps';
+const String kOamapShortSeedKey = 'oamap-short-seed';
+const int kOamapTypingFps = 10;
+
+bool _oamapOpt(String key, bool def) {
+  final v = bind.mainGetLocalOption(key: key);
+  if (v == 'Y') return true;
+  if (v == 'N') return false;
+  return def;
+}
+
+bool get oamapTypingLowFps =>
+    kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
+bool get oamapShortSeed =>
+    kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, false);
+
+/// Seed of the hidden soft keyboard field (remote_page.dart initText).
+String oamapSeed() => '1' * (oamapShortSeed ? 64 : 1024);
+
+/// remote_page onSoftKeyboardChanged -> lower / restore the frame rate.
+/// Calls are queued so a quick open/close cannot leave the low rate behind.
+class OamapTypingFps {
+  final FFI ffi;
+  bool _low = false;
+  String _saved = '';
+  Future<void> _queue = Future.value();
+
+  OamapTypingFps(this.ffi);
+
+  void onKeyboard(bool open) {
+    _queue = _queue.then((_) => _apply(open)).catchError((e) {
+      debugPrint('OAMap typing fps: $e');
+    });
+  }
+
+  Future<void> _apply(bool open) async {
+    final sid = ffi.sessionId;
+    if (open) {
+      if (_low || !oamapTypingLowFps) return;
+      final saved =
+          await bind.sessionGetOption(sessionId: sid, arg: 'custom-fps') ?? '';
+      final cur = int.tryParse(saved) ?? 30;
+      if (cur <= kOamapTypingFps) return;
+      _saved = saved;
+      _low = true;
+      await bind.sessionSetCustomFps(sessionId: sid, fps: kOamapTypingFps);
+      // sessionSetCustomFps also saves the value for this peer; put it back.
+      await bind.sessionPeerOption(
+          sessionId: sid, name: 'custom-fps', value: _saved);
+    } else {
+      if (!_low) return;
+      _low = false;
+      final cur = int.tryParse(_saved) ?? 30;
+      await bind.sessionSetCustomFps(sessionId: sid, fps: cur);
+      await bind.sessionPeerOption(
+          sessionId: sid, name: 'custom-fps', value: _saved);
+    }
+  }
+}
+
+/// Settings > OAMap: the two switches above.
+AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
+  Future<void> save(String key, bool v) async {
+    await bind.mainSetLocalOption(key: key, value: v ? 'Y' : 'N');
+    refresh();
+  }
+
+  return SettingsSection(
+    title: const Text('OAMap'),
+    tiles: [
+      SettingsTile.switchTile(
+        title: const Text('자판 열면 화면 속도 낮춤(한글 입력 빠르게)'),
+        initialValue: oamapTypingLowFps,
+        onToggle: (v) => save(kOamapTypingLowFpsKey, v),
+      ),
+      SettingsTile.switchTile(
+        title: const Text('숨은 입력칸 짧게(시험)'),
+        initialValue: oamapShortSeed,
+        onToggle: (v) => save(kOamapShortSeedKey, v),
+      ),
+    ],
+  );
+}

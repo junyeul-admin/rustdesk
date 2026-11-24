@@ -23,6 +23,7 @@ import '../widgets/dialog.dart';
 import 'home_page.dart';
 import 'mobile_keyboard_shortcuts_page.dart';
 import 'scan_page.dart';
+import '../../oamap/oamap_typing.dart'; // OAMap 0008
 
 class SettingsPage extends StatefulWidget implements PageShape {
   @override
@@ -736,6 +737,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
     final settings = SettingsList(
       sections: [
         customClientSection,
+        if (kOamapTypingTune) oamapTypingSettingsSection(() => setState(() {})), // OAMap 0008
         if (!bind.isDisableAccount())
           SettingsSection(
             title: Text(translate('Account')),
