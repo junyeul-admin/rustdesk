@@ -1,22 +1,26 @@
 diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
-index 0a5f048..8fc7a5f 100644
+index 0a5f048..e191f9d 100644
 --- a/flutter/lib/mobile/pages/remote_page.dart
 +++ b/flutter/lib/mobile/pages/remote_page.dart
-@@ -1034,6 +1034,8 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1034,6 +1034,9 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
    var _more = true;
    var _fn = false;
    var _pin = false;
 +  var _oamapCompact = true; // OAMap 0009
 +  var _oamapKbWas = false; // OAMap 0009
++  var _oamapArrows = false; // OAMap 0009: [⋯] shows the arrow keys
    final _keyboardVisibilityController = KeyboardVisibilityController();
    final _key = GlobalKey();
  
-@@ -1091,6 +1093,56 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1091,6 +1094,59 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
  
      final pi = gFFI.ffiModel.pi;
      final isMac = pi.platform == kPeerPlatformMacOS;
 +    // OAMap 0009: one short row while the soft keyboard is open
-+    if (widget.keyboardIsVisible && !_oamapKbWas) _oamapCompact = true;
++    if (widget.keyboardIsVisible && !_oamapKbWas) {
++      _oamapCompact = true;
++      _oamapArrows = false;
++    }
 +    _oamapKbWas = widget.keyboardIsVisible;
 +    if (kOamapCompactBar && _oamapCompact && widget.keyboardIsVisible) {
 +      Future.delayed(Duration(milliseconds: 500), () {
@@ -34,41 +38,41 @@ index 0a5f048..8fc7a5f 100644
 +              wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
 +                sendPrompt(isMac, 'VK_V');
 +              }),
++              wrap(isMac ? ' Cmd ' : ' Win ', () {
++                setState(() => inputModel.command = !inputModel.command);
++              }, active: inputModel.command),
 +              wrap('Ctrl ', () {
 +                setState(() => inputModel.ctrl = !inputModel.ctrl);
 +              }, active: inputModel.ctrl),
 +              wrap(' Alt ', () {
 +                setState(() => inputModel.alt = !inputModel.alt);
 +              }, active: inputModel.alt),
-+              wrap(isMac ? ' Cmd ' : ' Win ', () {
-+                setState(() => inputModel.command = !inputModel.command);
-+              }, active: inputModel.command),
-+              wrap('', () {
-+                inputModel.inputKey('VK_LEFT');
-+              }, icon: Icons.keyboard_arrow_left),
-+              wrap('', () {
-+                inputModel.inputKey('VK_UP');
-+              }, icon: Icons.keyboard_arrow_up),
-+              wrap('', () {
-+                inputModel.inputKey('VK_DOWN');
-+              }, icon: Icons.keyboard_arrow_down),
-+              wrap('', () {
-+                inputModel.inputKey('VK_RIGHT');
-+              }, icon: Icons.keyboard_arrow_right),
 +            ],
 +            more: wrap('', () {
-+              setState(() {
-+                _oamapCompact = false;
-+                _more = true;
-+                _fn = false;
-+              });
-+            }, icon: Icons.more_horiz),
++              setState(() => _oamapArrows = !_oamapArrows);
++            }, active: _oamapArrows, icon: Icons.more_horiz),
++            extra: !_oamapArrows
++                ? null
++                : [
++                    wrap('', () {
++                      inputModel.inputKey('VK_LEFT');
++                    }, icon: Icons.keyboard_arrow_left),
++                    wrap('', () {
++                      inputModel.inputKey('VK_UP');
++                    }, icon: Icons.keyboard_arrow_up),
++                    wrap('', () {
++                      inputModel.inputKey('VK_DOWN');
++                    }, icon: Icons.keyboard_arrow_down),
++                    wrap('', () {
++                      inputModel.inputKey('VK_RIGHT');
++                    }, icon: Icons.keyboard_arrow_right),
++                  ],
 +          ));
 +    }
      final isWin = pi.platform == kPeerPlatformWindows;
      final isLinux = pi.platform == kPeerPlatformLinux;
      final modifiers = <Widget>[
-@@ -1131,6 +1183,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1131,6 +1187,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
            ' ... ',
            () => setState(
                  () {
@@ -80,7 +84,7 @@ index 0a5f048..8fc7a5f 100644
                    if (_more) {
                      _fn = false;
 diff --git a/flutter/lib/oamap/oamap_keys.dart b/flutter/lib/oamap/oamap_keys.dart
-index bc00fcb..b41804b 100644
+index bc00fcb..20fdab1 100644
 --- a/flutter/lib/oamap/oamap_keys.dart
 +++ b/flutter/lib/oamap/oamap_keys.dart
 @@ -6,6 +6,13 @@
@@ -89,15 +93,15 @@ index bc00fcb..b41804b 100644
  // Turn off at build time: --dart-define=OAMAP_IME_KEYS=false
 +//
 +// OAMap add-on 0009: while the soft keyboard is open the key bar is one short
-+// row - [Ctrl+C] [Ctrl+V] [Ctrl] [Alt] [Win] [←][↑][↓][→] ... [⋯]. [⋯] opens the full upstream bar, its
-+// own [...] button comes back to the short row. Each time the keyboard opens
-+// the bar starts short again.
++// row - [Ctrl+C] [Ctrl+V] [Win] [Ctrl] [Alt] ... [⋯]. [⋯] shows / hides a
++// second row with the arrow keys. Each time the keyboard opens the bar starts
++// with one row again.
 +//
 +// Turn off at build time: --dart-define=OAMAP_COMPACT_BAR=false
  
  import 'package:flutter/widgets.dart';
  
-@@ -14,14 +21,46 @@ import '../models/input_model.dart';
+@@ -14,14 +21,53 @@ import '../models/input_model.dart';
  const bool kOamapImeKeys =
      bool.fromEnvironment('OAMAP_IME_KEYS', defaultValue: true);
  
@@ -119,30 +123,37 @@ index bc00fcb..b41804b 100644
    ];
  }
 +
-+/// The short row: [keys] scroll sideways on a narrow phone, [more] stays at
-+/// the end.
++/// The short row: [keys] on the left (scroll sideways on a narrow phone),
++/// [more] at the end; [extra] (arrow keys) as a second row when shown.
 +Widget oamapCompactKeyRow({
 +  required List<Widget> keys,
 +  required Widget more,
++  List<Widget>? extra,
 +}) {
 +  const gap = SizedBox(width: 4);
-+  return Row(
-+    children: [
-+      Expanded(
-+        child: SingleChildScrollView(
-+          scrollDirection: Axis.horizontal,
-+          child: Row(
-+            children: [
-+              for (var i = 0; i < keys.length; i++) ...[
-+                if (i > 0) gap,
-+                keys[i],
-+              ],
++  Widget line(List<Widget> ks) => SingleChildScrollView(
++        scrollDirection: Axis.horizontal,
++        child: Row(
++          children: [
++            for (var i = 0; i < ks.length; i++) ...[
++              if (i > 0) gap,
++              ks[i],
 +            ],
-+          ),
++          ],
 +        ),
++      );
++  return Column(
++    mainAxisSize: MainAxisSize.min,
++    crossAxisAlignment: CrossAxisAlignment.start,
++    children: [
++      Row(
++        children: [
++          Expanded(child: line(keys)),
++          gap,
++          more,
++        ],
 +      ),
-+      gap,
-+      more,
++      if (extra != null) ...[const SizedBox(height: 4), line(extra)],
 +    ],
 +  );
 +}
