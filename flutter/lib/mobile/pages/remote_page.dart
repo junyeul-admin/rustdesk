@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_view.dart'; // OAMap 0004
 import '../../oamap/oamap_session.dart'; // OAMap 0003
 import '../../oamap/oamap_keys.dart'; // OAMap 0002
 import '../../oamap/oamap_input.dart'; // OAMap 0001
@@ -98,6 +99,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Orientation? _currentOrientation;
   final _uniqueKey = UniqueKey();
   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
+  final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
   Timer? _iosKeyboardWorkaroundTimer;
 
   final _blockableOverlayState = BlockableOverlayState();
@@ -202,6 +204,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
     unawaited(bind.sessionClose(sessionId: sessionId));
     _oamapKeeper.close(); // OAMap 0003 (before any await)
+    _oamapKbCanvas.dispose(); // OAMap 0004
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
@@ -227,6 +230,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     // The inner logic of `on_voice_call_closed` will check if the voice call is active.
     // Only one client is considered here for now.
     gFFI.chatModel.onVoiceCallClosed("End connection");
+  }
+
+  // OAMap 0004: re-centre the cursor above the keyboard once it has opened
+  @override
+  void didChangeMetrics() {
+    _oamapKbCanvas
+        .onMetricsChanged(keyboardVisibilityController.isVisible && _showEdit);
   }
 
   @override
@@ -515,9 +525,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         return false;
       },
       child: Scaffold(
+          // OAMap 0004: keep the remote screen size, the keyboard covers it
+          resizeToAvoidBottomInset: oamapResizeToAvoidBottomInset,
           // workaround for https://github.com/rustdesk/rustdesk/issues/3131
           floatingActionButtonLocation: keyboardIsVisible
-              ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
+              ? oamapFabLocation( // OAMap 0004
+                  FABLocation(FloatingActionButtonLocation.endFloat, 0, -35),
+                  context)
               : null,
           floatingActionButton: !showActionButton
               ? null
