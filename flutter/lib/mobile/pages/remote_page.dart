@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_keys.dart'; // OAMap 0002
 import '../../oamap/oamap_input.dart'; // OAMap 0001
 
 final initText = '1' * 1024;
@@ -1079,6 +1080,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
       wrap(isMac ? ' Cmd ' : ' Win ', () {
         setState(() => inputModel.command = !inputModel.command);
       }, active: inputModel.command),
+      ...oamapImeKeys(wrap, inputModel, isMac), // OAMap 0002
     ];
     final keys = <Widget>[
       wrap(
