@@ -1034,6 +1034,8 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
   var _more = true;
   var _fn = false;
   var _pin = false;
+  var _oamapCompact = true; // OAMap 0009
+  var _oamapKbWas = false; // OAMap 0009
   final _keyboardVisibilityController = KeyboardVisibilityController();
   final _key = GlobalKey();
 
@@ -1091,6 +1093,34 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
 
     final pi = gFFI.ffiModel.pi;
     final isMac = pi.platform == kPeerPlatformMacOS;
+    // OAMap 0009: one short row while the soft keyboard is open
+    if (widget.keyboardIsVisible && !_oamapKbWas) _oamapCompact = true;
+    _oamapKbWas = widget.keyboardIsVisible;
+    if (kOamapCompactBar && _oamapCompact && widget.keyboardIsVisible) {
+      Future.delayed(Duration(milliseconds: 500), () {
+        _updateRect();
+      });
+      return Container(
+          key: _key,
+          color: Color(0xAA000000),
+          padding: EdgeInsets.only(top: 24, bottom: 4, left: 4, right: 4),
+          child: oamapCompactKeyRow(
+            ctrl: wrap('Ctrl ', () {
+              setState(() => inputModel.ctrl = !inputModel.ctrl);
+            }, active: inputModel.ctrl),
+            alt: wrap(' Alt ', () {
+              setState(() => inputModel.alt = !inputModel.alt);
+            }, active: inputModel.alt),
+            imeKeys: oamapImeKeys(wrap, inputModel, isMac, hangulOnly: true),
+            more: wrap('', () {
+              setState(() {
+                _oamapCompact = false;
+                _more = true;
+                _fn = false;
+              });
+            }, icon: Icons.more_horiz),
+          ));
+    }
     final isWin = pi.platform == kPeerPlatformWindows;
     final isLinux = pi.platform == kPeerPlatformLinux;
     final modifiers = <Widget>[
@@ -1131,6 +1161,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
           ' ... ',
           () => setState(
                 () {
+                  if (kOamapCompactBar && widget.keyboardIsVisible) {
+                    _oamapCompact = true; // OAMap 0009: back to one row
+                    return;
+                  }
                   _more = !_more;
                   if (_more) {
                     _fn = false;
