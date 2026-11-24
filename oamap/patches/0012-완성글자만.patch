@@ -1,0 +1,277 @@
+diff --git a/.github/oamap/make_android_workflow.cjs b/.github/oamap/make_android_workflow.cjs
+index be541db..adc7e6d 100644
+--- a/.github/oamap/make_android_workflow.cjs
++++ b/.github/oamap/make_android_workflow.cjs
+@@ -61,7 +61,7 @@ a = a.replace(flutterStep, (m, step, next) => step +
+   '        shell: bash\n' +
+   '        run: |\n' +
+   '          set +e\n' +
+-  '          flutter test test/oamap_input_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
++  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
+   '          rc=${PIPESTATUS[0]}\n' +
+   '          last=$(grep -E "^[0-9:]+ \\+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)\n' +
+   '          if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi\n' +
+diff --git a/.github/workflows/oamap-android.yml b/.github/workflows/oamap-android.yml
+index 9d1e802..b02cb0f 100644
+--- a/.github/workflows/oamap-android.yml
++++ b/.github/workflows/oamap-android.yml
+@@ -161,7 +161,7 @@ jobs:
+         shell: bash
+         run: |
+           set +e
+-          flutter test test/oamap_input_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
++          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
+           rc=${PIPESTATUS[0]}
+           last=$(grep -E "^[0-9:]+ \+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)
+           if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 48daa2c..2ced8e0 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -104,6 +104,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
+   final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
+   final _oamapTypingFps = OamapTypingFps(gFFI); // OAMap 0008
++  final _oamapCompose = OamapComposeSender(initText); // OAMap 0012
+   Timer? _iosKeyboardWorkaroundTimer;
+ 
+   final _blockableOverlayState = BlockableOverlayState();
+@@ -209,6 +210,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+     unawaited(bind.sessionClose(sessionId: sessionId));
+     _oamapKeeper.close(); // OAMap 0003 (before any await)
+     _oamapKbCanvas.dispose(); // OAMap 0004
++    _oamapCompose.dispose(); // OAMap 0012
+     // https://github.com/flutter/flutter/issues/64935
+     super.dispose();
+     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
+@@ -307,6 +309,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+   void onSoftKeyboardChanged(bool visible) {
+     _oamapTypingFps.onKeyboard(visible); // OAMap 0008
+     if (!visible) {
++      _oamapCompose.flush(); // OAMap 0012
+       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
+       if (gFFI.chatModel.chatWindowOverlayEntry == null &&
+@@ -397,10 +400,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+     _value = newValue;
+     if (kOamapHangulInput) {
+       // OAMap 0001: prefix diff for composing IMEs (flutter/lib/oamap/oamap_input.dart)
+-      oamapSoftKeyboardDiff(oldValue, newValue,
+-          back: () => inputModel.inputKey('VK_BACK'),
+-          char: inputChar,
+-          string: (s) => bind.sessionInputString(sessionId: sessionId, value: s));
++      // OAMap 0012: only finished syllables are sent (OamapComposeSender)
++      _oamapCompose.handle(_textController.value, newValue, oamapCommitOnly,
++          (o, n) => oamapSoftKeyboardDiff(o, n,
++              back: () => inputModel.inputKey('VK_BACK'),
++              char: inputChar,
++              string: (s) =>
++                  bind.sessionInputString(sessionId: sessionId, value: s)));
+       return;
+     }
+     if (oldValue.isNotEmpty &&
+@@ -496,6 +502,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+     gFFI.invokeMethod("enable_soft_keyboard", true);
+     // destroy first, so that our _value trick can work
+     _value = initText;
++    _oamapCompose.flush(); // OAMap 0012: send what the last field still held
++    _oamapCompose.reset(_value);
+     _textController.text = _value;
+     setState(() => _showEdit = false);
+     _timer?.cancel();
+diff --git a/flutter/lib/oamap/oamap_input.dart b/flutter/lib/oamap/oamap_input.dart
+index bc0243b..2da5a8d 100644
+--- a/flutter/lib/oamap/oamap_input.dart
++++ b/flutter/lib/oamap/oamap_input.dart
+@@ -10,6 +10,10 @@
+ //
+ // Turn off at build time: --dart-define=OAMAP_HANGUL_INPUT=false
+ 
++import 'dart:async';
++
++import 'package:flutter/services.dart';
++
+ const bool kOamapHangulInput =
+     bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
+ 
+@@ -69,3 +73,77 @@ void oamapSoftKeyboardDiff(
+     char(tail);
+   }
+ }
++
++// OAMap add-on 0012: send only finished syllables.
++//
++// Field report: Samsung Cheonjiin "안녕하세요" always arrived as "안녕하8요"
++// while the remote PC's own Korean IME was in Hangul mode. The prefix diff
++// above sent every intermediate composing state (ㅅ, ㅅᆞ, 서, 세 ...) as
++// typed characters plus VK_BACK, and the PC's IME mixed some of them up.
++// Now the text inside the composing range (the syllable still being built) is
++// held back; it is sent once it is committed (next syllable, space, enter),
++// after [idle] without a change, or when the keyboard closes (flush).
++// Turn off in Settings > OAMap (or --dart-define=OAMAP_COMMIT_ONLY=false).
++const bool kOamapCommitOnlyDefault =
++    bool.fromEnvironment('OAMAP_COMMIT_ONLY', defaultValue: true);
++
++class OamapComposeSender {
++  OamapComposeSender(String seed, {this.idle = const Duration(milliseconds: 800)})
++      : _sent = seed,
++        _latest = seed;
++
++  final Duration idle;
++  String _sent;
++  String _latest;
++  Timer? _timer;
++  void Function(String oldValue, String newValue)? _send;
++
++  String get sent => _sent;
++
++  void reset(String seed) {
++    _timer?.cancel();
++    _timer = null;
++    _sent = seed;
++    _latest = seed;
++  }
++
++  /// [value] = controller value at onChanged time (text + composing range).
++  void handle(TextEditingValue value, String newValue, bool commitOnly,
++      void Function(String oldValue, String newValue) send) {
++    _send = send;
++    _latest = newValue;
++    _timer?.cancel();
++    _timer = null;
++    var target = newValue;
++    final c = value.composing;
++    if (commitOnly &&
++        value.text == newValue &&
++        c.isValid &&
++        !c.isCollapsed &&
++        c.start >= 0 &&
++        c.end == newValue.length) {
++      target = newValue.substring(0, c.start);
++      _timer = Timer(idle, flush);
++    }
++    _emit(target);
++  }
++
++  void flush() {
++    _timer?.cancel();
++    _timer = null;
++    _emit(_latest);
++  }
++
++  void dispose() {
++    _timer?.cancel();
++    _timer = null;
++  }
++
++  void _emit(String target) {
++    final send = _send;
++    if (send == null || target == _sent) return;
++    final old = _sent;
++    _sent = target;
++    send(old, target);
++  }
++}
+diff --git a/flutter/lib/oamap/oamap_typing.dart b/flutter/lib/oamap/oamap_typing.dart
+index 37f17e9..49f7ae7 100644
+--- a/flutter/lib/oamap/oamap_typing.dart
++++ b/flutter/lib/oamap/oamap_typing.dart
+@@ -30,12 +30,14 @@ import 'package:settings_ui/settings_ui.dart';
+ import '../models/model.dart';
+ import '../models/platform_model.dart';
+ import 'oamap_cursor.dart';
++import 'oamap_input.dart';
+ 
+ const bool kOamapTypingTune =
+     bool.fromEnvironment('OAMAP_TYPING_TUNE', defaultValue: true);
+ 
+ const String kOamapTypingLowFpsKey = 'oamap-typing-low-fps';
+ const String kOamapShortSeedKey = 'oamap-short-seed';
++const String kOamapCommitOnlyKey = 'oamap-commit-only'; // OAMap 0012
+ const int kOamapTypingFps = 10;
+ 
+ bool _oamapOpt(String key, bool def) {
+@@ -47,6 +49,8 @@ bool _oamapOpt(String key, bool def) {
+ 
+ bool get oamapTypingLowFps =>
+     kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
++bool get oamapCommitOnly =>
++    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, true);
+ bool get oamapShortSeed =>
+     kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, true);
+ 
+@@ -109,6 +113,11 @@ AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
+         initialValue: oamapTypingLowFps,
+         onToggle: (v) => save(kOamapTypingLowFpsKey, v),
+       ),
++      SettingsTile.switchTile(
++        title: const Text('완성된 글자만 보내기(한글 오타 줄이기)'),
++        initialValue: oamapCommitOnly,
++        onToggle: (v) => save(kOamapCommitOnlyKey, v),
++      ),
+       SettingsTile.switchTile(
+         title: const Text('숨은 입력칸 짧게(한글 오타 줄이기)'),
+         initialValue: oamapShortSeed,
+diff --git a/flutter/test/oamap_compose_test.dart b/flutter/test/oamap_compose_test.dart
+new file mode 100644
+index 0000000..40ed636
+--- /dev/null
++++ b/flutter/test/oamap_compose_test.dart
+@@ -0,0 +1,57 @@
++// OAMap add-on 0012 test: OamapComposeSender holds back the composing syllable.
++//   cd flutter && flutter test test/oamap_compose_test.dart
++import 'package:flutter/services.dart';
++import 'package:flutter_hbb/oamap/oamap_input.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++TextEditingValue v(String t, int cs, int ce) => TextEditingValue(
++    text: t, composing: cs < 0 ? TextRange.empty : TextRange(start: cs, end: ce));
++
++void main() {
++  const seed = '11	';
++  test('Cheonjiin 세: intermediate jamo never sent', () {
++    final out = <String>[];
++    final s = OamapComposeSender(seed, idle: const Duration(hours: 1));
++    void go(String t, int cs) =>
++        s.handle(v(t, cs, t.length), t, true, (o, n) => out.add(n));
++    go('${seed}하', seed.length); // composing 하
++    go('${seed}핫', seed.length);
++    go('${seed}하ㅅᆞ', seed.length + 1); // 하 committed, ㅅᆞ composing
++    go('${seed}하서', seed.length + 1);
++    go('${seed}하세', seed.length + 1);
++    go('${seed}하세ㅇ', seed.length + 2);
++    go('${seed}하세요', seed.length + 2);
++    s.flush();
++    expect(out, ['${seed}하', '${seed}하세', '${seed}하세요']);
++    expect(out.any((x) => x.contains('ㅅ') || x.contains('ᆞ') || x.contains('8')), false);
++  });
++  test('commitOnly off = every change sent', () {
++    final out = <String>[];
++    final s = OamapComposeSender(seed, idle: const Duration(hours: 1));
++    s.handle(v('${seed}ㄱ', 3, 4), '${seed}ㄱ', false, (o, n) => out.add(n));
++    s.handle(v('${seed}가', 3, 4), '${seed}가', false, (o, n) => out.add(n));
++    expect(out, ['${seed}ㄱ', '${seed}가']);
++  });
++  test('no composing range (English) = sent at once', () {
++    final out = <String>[];
++    final s = OamapComposeSender(seed, idle: const Duration(hours: 1));
++    s.handle(v('${seed}a', -1, -1), '${seed}a', true, (o, n) => out.add(n));
++    expect(out, ['${seed}a']);
++  });
++  test('idle flush sends the held syllable', () async {
++    final out = <String>[];
++    final s = OamapComposeSender(seed, idle: const Duration(milliseconds: 10));
++    s.handle(v('${seed}요', 3, 4), '${seed}요', true, (o, n) => out.add(n));
++    expect(out, isEmpty);
++    await Future.delayed(const Duration(milliseconds: 50));
++    expect(out, ['${seed}요']);
++  });
++  test('reset clears without sending', () {
++    final out = <String>[];
++    final s = OamapComposeSender(seed, idle: const Duration(hours: 1));
++    s.handle(v('${seed}가', 3, 4), '${seed}가', true, (o, n) => out.add(n));
++    s.reset(seed);
++    s.flush();
++    expect(out, isEmpty);
++  });
++}
