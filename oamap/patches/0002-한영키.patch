@@ -1,0 +1,53 @@
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 7079e4e..2989811 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
+ import '../../utils/image.dart';
+ import '../widgets/dialog.dart';
+ import '../widgets/custom_scale_widget.dart';
++import '../../oamap/oamap_keys.dart'; // OAMap 0002
+ import '../../oamap/oamap_input.dart'; // OAMap 0001
+ 
+ final initText = '1' * 1024;
+@@ -1079,6 +1080,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+       wrap(isMac ? ' Cmd ' : ' Win ', () {
+         setState(() => inputModel.command = !inputModel.command);
+       }, active: inputModel.command),
++      ...oamapImeKeys(wrap, inputModel, isMac), // OAMap 0002
+     ];
+     final keys = <Widget>[
+       wrap(
+diff --git a/flutter/lib/oamap/oamap_keys.dart b/flutter/lib/oamap/oamap_keys.dart
+new file mode 100644
+index 0000000..bc00fcb
+--- /dev/null
++++ b/flutter/lib/oamap/oamap_keys.dart
+@@ -0,0 +1,27 @@
++// OAMap add-on 0002: [한/영] [한자] buttons in the mobile special-key bar
++// (mobile/pages/remote_page.dart, KeyHelpTools modifiers row).
++//
++// KEY_MAP in src/client.rs already maps "VK_HANGUL" / "VK_HANJA" to
++// ControlKey::Hangul / Hanja and the host presses them
++// (src/server/input_service.rs). Hidden for macOS peers.
++//
++// Turn off at build time: --dart-define=OAMAP_IME_KEYS=false
++
++import 'package:flutter/widgets.dart';
++
++import '../models/input_model.dart';
++
++const bool kOamapImeKeys =
++    bool.fromEnvironment('OAMAP_IME_KEYS', defaultValue: true);
++
++/// [wrap] is KeyHelpTools.wrap (text button in the key bar).
++List<Widget> oamapImeKeys(
++    Widget Function(String text, void Function() onPressed) wrap,
++    InputModel inputModel,
++    bool isMac) {
++  if (!kOamapImeKeys || isMac) return const [];
++  return [
++    wrap('한/영', () => inputModel.inputKey('VK_HANGUL')),
++    wrap('한자', () => inputModel.inputKey('VK_HANJA')),
++  ];
++}

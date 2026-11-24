@@ -1,0 +1,116 @@
+# OAMap: take a new RustDesk tag, stack our add-on patches on it, check,
+# and start the android build. Manual run only.
+#
+# Lives on the fork's default branch at .github/workflows/oamap-upstream.yml,
+# next to oamap/patches/0001-....patch ... 0007-....patch.
+# Result: branch oamap/<tag> (upstream tag + our patches) and a run of
+# oamap-android.yml on that branch. Patches that do not apply are listed in
+# the run summary and the run fails (GitHub notifies the owner by mail/app).
+name: OAMap upstream update
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "RustDesk tag to build on, e.g. 1.5.4"
+        type: string
+        required: true
+      build:
+        description: "Start the android build when everything applies"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # push branch oamap/<tag>
+  actions: write    # start oamap-android.yml
+
+jobs:
+  stack:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Check tag name
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            echo "bad tag: $TAG"; exit 1
+          fi
+
+      - name: Our patches (default branch)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          path: ours
+
+      - name: Upstream tag
+        run: |
+          git clone --depth 1 --branch "$TAG" https://github.com/rustdesk/rustdesk.git up
+          cd up
+          git config user.name "oamap-bot"
+          git config user.email "oamap-bot@users.noreply.github.com"
+          git checkout -b "oamap/$TAG"
+
+      - name: Stack patches in order
+        id: stack
+        run: |
+          cd up
+          failed=""
+          for p in ../ours/oamap/patches/*.patch; do
+            n=$(basename "$p")
+            if git apply --3way --whitespace=nowarn "$p"; then
+              git add -A -f
+              git commit -q -m "OAMap ${n%.patch}"
+              echo "| $n | OK |" >> ../summary.md
+            else
+              git reset -q --hard
+              failed="$failed ${n%%-*}"
+              echo "| $n | FAILED |" >> ../summary.md
+            fi
+          done
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          {
+            echo "## OAMap patches on RustDesk $TAG"
+            echo "| patch | result |"; echo "|---|---|"
+            cat ../summary.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Regenerate android workflow from this tag
+        run: |
+          cd up
+          node .github/oamap/make_android_workflow.cjs
+          git add -A -f
+          git commit -q -m "OAMap 0007 regenerated for $TAG" || true
+
+      - name: Hook check + input simulation
+        id: checks
+        run: |
+          cd up
+          node .github/oamap/check_hooks.cjs | tee -a "$GITHUB_STEP_SUMMARY"
+          node .github/oamap/sim_input.cjs | tail -6 | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Stop if a patch did not apply
+        if: steps.stack.outputs.failed != ''
+        env:
+          FAILED: ${{ steps.stack.outputs.failed }}
+        run: |
+          echo "::error::Patches that did not apply on $TAG:$FAILED - fix them on a branch, re-export, run again"
+          echo "### Not applied:$FAILED" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      # GITHUB_TOKEN may not push files under .github/workflows, so a token
+      # secret OAMAP_PUSH_TOKEN (fine-grained: this repo, Contents + Workflows
+      # read/write, Actions read/write) is used for the push and the start.
+      - name: Push branch oamap/<tag>
+        env:
+          PUSH_TOKEN: ${{ secrets.OAMAP_PUSH_TOKEN }}
+        run: |
+          cd up
+          git remote add fork "https://x-access-token:${PUSH_TOKEN}@github.com/${{ github.repository }}.git"
+          git push -f fork "oamap/$TAG"
+
+      - name: Start android build
+        if: inputs.build
+        env:
+          GH_TOKEN: ${{ secrets.OAMAP_PUSH_TOKEN }}
+        run: |
+          gh workflow run oamap-android.yml --repo "${{ github.repository }}" --ref "oamap/$TAG"
+          echo "Android build started on oamap/$TAG" >> "$GITHUB_STEP_SUMMARY"

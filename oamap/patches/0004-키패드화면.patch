@@ -1,0 +1,168 @@
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 9c1752f..204e2ee 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
+ import '../../utils/image.dart';
+ import '../widgets/dialog.dart';
+ import '../widgets/custom_scale_widget.dart';
++import '../../oamap/oamap_view.dart'; // OAMap 0004
+ import '../../oamap/oamap_session.dart'; // OAMap 0003
+ import '../../oamap/oamap_keys.dart'; // OAMap 0002
+ import '../../oamap/oamap_input.dart'; // OAMap 0001
+@@ -98,6 +99,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+   Orientation? _currentOrientation;
+   final _uniqueKey = UniqueKey();
+   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
++  final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
+   Timer? _iosKeyboardWorkaroundTimer;
+ 
+   final _blockableOverlayState = BlockableOverlayState();
+@@ -202,6 +204,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+     // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
+     unawaited(bind.sessionClose(sessionId: sessionId));
+     _oamapKeeper.close(); // OAMap 0003 (before any await)
++    _oamapKbCanvas.dispose(); // OAMap 0004
+     // https://github.com/flutter/flutter/issues/64935
+     super.dispose();
+     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
+@@ -229,6 +232,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+     gFFI.chatModel.onVoiceCallClosed("End connection");
+   }
+ 
++  // OAMap 0004: re-centre the cursor above the keyboard once it has opened
++  @override
++  void didChangeMetrics() {
++    _oamapKbCanvas
++        .onMetricsChanged(keyboardVisibilityController.isVisible && _showEdit);
++  }
++
+   @override
+   void didChangeAppLifecycleState(AppLifecycleState state) {
+     _oamapKeeper.onLifecycle(state); // OAMap 0003
+@@ -515,9 +525,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+         return false;
+       },
+       child: Scaffold(
++          // OAMap 0004: keep the remote screen size, the keyboard covers it
++          resizeToAvoidBottomInset: oamapResizeToAvoidBottomInset,
+           // workaround for https://github.com/rustdesk/rustdesk/issues/3131
+           floatingActionButtonLocation: keyboardIsVisible
+-              ? FABLocation(FloatingActionButtonLocation.endFloat, 0, -35)
++              ? oamapFabLocation( // OAMap 0004
++                  FABLocation(FloatingActionButtonLocation.endFloat, 0, -35),
++                  context)
+               : null,
+           floatingActionButton: !showActionButton
+               ? null
+diff --git a/flutter/lib/oamap/oamap_view.dart b/flutter/lib/oamap/oamap_view.dart
+new file mode 100644
+index 0000000..d55190a
+--- /dev/null
++++ b/flutter/lib/oamap/oamap_view.dart
+@@ -0,0 +1,105 @@
++// OAMap add-on 0004: the remote screen keeps its size when the soft keyboard
++// opens; the keyboard covers the lower part and the canvas is moved so the
++// remote cursor stays visible above the keyboard.
++//
++// Why it shrank (mobile/pages/remote_page.dart): Scaffold resizes its body
++// for the keyboard (resizeToAvoidBottomInset defaults to true). In portrait
++// the shorter body becomes wider than tall, OrientationBuilder reports
++// "landscape" and calls canvasModel.updateViewStyle(), which recomputes the
++// adaptive scale with a height that already excludes the keyboard
++// (CanvasModel.getSize subtracts viewInsets.bottom) -> smaller picture.
++//
++// Fix: resizeToAvoidBottomInset: false (body keeps full size, no false
++// orientation flip, scale unchanged). Moving the canvas is upstream's own
++// code: CursorModel.keyHelpToolsVisibilityChanged saves the offset and calls
++// CanvasModel.mobileFocusCanvasCursor() (centre the cursor inside the area
++// above the keyboard), and restores it when the keyboard closes. We call
++// mobileFocusCanvasCursor() once more after the keyboard animation settles
++// (same pattern as mobile/pages/view_camera_page.dart didChangeMetrics), and
++// keep the floating button above the keyboard ourselves.
++//
++// Turn off at build time: --dart-define=OAMAP_KEYBOARD_OVERLAY=false
++
++import 'dart:async';
++import 'dart:ui' as ui;
++
++import 'package:flutter/material.dart';
++
++import '../models/model.dart';
++
++const bool kOamapKeyboardOverlay =
++    bool.fromEnvironment('OAMAP_KEYBOARD_OVERLAY', defaultValue: true);
++
++/// Scaffold.resizeToAvoidBottomInset for the remote page.
++bool get oamapResizeToAvoidBottomInset => !kOamapKeyboardOverlay;
++
++/// Keeps [inner] (the page's FAB location) above the soft keyboard when the
++/// Scaffold no longer does it (resizeToAvoidBottomInset: false).
++FloatingActionButtonLocation oamapFabLocation(
++    FloatingActionButtonLocation inner, BuildContext context) {
++  if (!kOamapKeyboardOverlay) return inner;
++  final inset = MediaQuery.of(context).viewInsets.bottom;
++  if (inset <= 0) return inner;
++  return _AboveKeyboardFabLocation(inner, inset);
++}
++
++class _AboveKeyboardFabLocation extends FloatingActionButtonLocation {
++  final FloatingActionButtonLocation inner;
++  final double keyboardInset;
++  const _AboveKeyboardFabLocation(this.inner, this.keyboardInset);
++
++  @override
++  Offset getOffset(ScaffoldPrelayoutGeometry g) {
++    final o = inner.getOffset(g);
++    final maxDy = g.scaffoldSize.height -
++        keyboardInset -
++        g.floatingActionButtonSize.height -
++        kFloatingActionButtonMargin;
++    return Offset(o.dx, o.dy > maxDy ? maxDy : o.dy);
++  }
++
++  // Scaffold compares locations to decide whether to animate the FAB.
++  @override
++  bool operator ==(Object other) =>
++      other is _AboveKeyboardFabLocation &&
++      other.inner.runtimeType == inner.runtimeType &&
++      other.keyboardInset == keyboardInset;
++
++  @override
++  int get hashCode => Object.hash(inner.runtimeType, keyboardInset);
++}
++
++/// remote_page didChangeMetrics -> re-centre the cursor above the keyboard
++/// once the keyboard has finished opening.
++class OamapKeyboardCanvas {
++  final FFI ffi;
++  double _lastBottom = 0;
++  Timer? _timer;
++
++  OamapKeyboardCanvas(this.ffi);
++
++  void onMetricsChanged(bool keyboardVisible) {
++    if (!kOamapKeyboardOverlay) return;
++    final bottom = MediaQueryData.fromView(ui.window).viewInsets.bottom;
++    _timer?.cancel();
++    if (bottom <= 0 || !keyboardVisible) {
++      // Closing: upstream restores the saved offset; just remember the state.
++      _lastBottom = bottom;
++      return;
++    }
++    // The user panned / zoomed while the keyboard is open: leave it alone.
++    if (ffi.cursorModel.lastKeyboardIsVisible &&
++        ffi.canvasModel.isMobileCanvasChanged) {
++      return;
++    }
++    _timer = Timer(const Duration(milliseconds: 150), () {
++      final now = MediaQueryData.fromView(ui.window).viewInsets.bottom;
++      if (now > 0 && now != _lastBottom) {
++        _lastBottom = now;
++        ffi.canvasModel.mobileFocusCanvasCursor();
++      }
++    });
++  }
++
++  void dispose() => _timer?.cancel();
++}
