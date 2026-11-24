@@ -1105,19 +1105,35 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
           color: Color(0xAA000000),
           padding: EdgeInsets.only(top: 24, bottom: 4, left: 4, right: 4),
           child: oamapCompactKeyRow(
-            copy: wrap(isMac ? 'Cmd+C' : 'Ctrl+C', () {
-              sendPrompt(isMac, 'VK_C');
-            }),
-            paste: wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
-              sendPrompt(isMac, 'VK_V');
-            }),
-            ctrl: wrap('Ctrl ', () {
-              setState(() => inputModel.ctrl = !inputModel.ctrl);
-            }, active: inputModel.ctrl),
-            alt: wrap(' Alt ', () {
-              setState(() => inputModel.alt = !inputModel.alt);
-            }, active: inputModel.alt),
-            imeKeys: oamapImeKeys(wrap, inputModel, isMac, hangulOnly: true),
+            keys: [
+              wrap(isMac ? 'Cmd+C' : 'Ctrl+C', () {
+                sendPrompt(isMac, 'VK_C');
+              }),
+              wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
+                sendPrompt(isMac, 'VK_V');
+              }),
+              wrap('Ctrl ', () {
+                setState(() => inputModel.ctrl = !inputModel.ctrl);
+              }, active: inputModel.ctrl),
+              wrap(' Alt ', () {
+                setState(() => inputModel.alt = !inputModel.alt);
+              }, active: inputModel.alt),
+              wrap(isMac ? ' Cmd ' : ' Win ', () {
+                setState(() => inputModel.command = !inputModel.command);
+              }, active: inputModel.command),
+              wrap('', () {
+                inputModel.inputKey('VK_LEFT');
+              }, icon: Icons.keyboard_arrow_left),
+              wrap('', () {
+                inputModel.inputKey('VK_UP');
+              }, icon: Icons.keyboard_arrow_up),
+              wrap('', () {
+                inputModel.inputKey('VK_DOWN');
+              }, icon: Icons.keyboard_arrow_down),
+              wrap('', () {
+                inputModel.inputKey('VK_RIGHT');
+              }, icon: Icons.keyboard_arrow_right),
+            ],
             more: wrap('', () {
               setState(() {
                 _oamapCompact = false;

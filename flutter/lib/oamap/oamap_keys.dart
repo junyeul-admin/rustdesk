@@ -8,7 +8,7 @@
 // Turn off at build time: --dart-define=OAMAP_IME_KEYS=false
 //
 // OAMap add-on 0009: while the soft keyboard is open the key bar is one short
-// row - [Ctrl+C] [Ctrl+V] [한/영] [Ctrl] [Alt] ... [⋯]. [⋯] opens the full upstream bar, its
+// row - [Ctrl+C] [Ctrl+V] [Ctrl] [Alt] [Win] [←][↑][↓][→] ... [⋯]. [⋯] opens the full upstream bar, its
 // own [...] button comes back to the short row. Each time the keyboard opens
 // the bar starts short again.
 //
@@ -37,27 +37,29 @@ List<Widget> oamapImeKeys(
   ];
 }
 
-/// The short row: copy, paste, IME key, modifiers on the left, [more] at the end.
+/// The short row: [keys] scroll sideways on a narrow phone, [more] stays at
+/// the end.
 Widget oamapCompactKeyRow({
-  required Widget copy,
-  required Widget paste,
-  required Widget ctrl,
-  required Widget alt,
-  required List<Widget> imeKeys,
+  required List<Widget> keys,
   required Widget more,
 }) {
   const gap = SizedBox(width: 4);
   return Row(
     children: [
-      copy,
+      Expanded(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < keys.length; i++) ...[
+                if (i > 0) gap,
+                keys[i],
+              ],
+            ],
+          ),
+        ),
+      ),
       gap,
-      paste,
-      for (final k in imeKeys) ...[gap, k],
-      gap,
-      ctrl,
-      gap,
-      alt,
-      const Spacer(),
       more,
     ],
   );
