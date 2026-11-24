@@ -29,6 +29,7 @@ import 'package:settings_ui/settings_ui.dart';
 
 import '../models/model.dart';
 import '../models/platform_model.dart';
+import 'oamap_cursor.dart';
 
 const bool kOamapTypingTune =
     bool.fromEnvironment('OAMAP_TYPING_TUNE', defaultValue: true);
@@ -113,6 +114,20 @@ AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
         initialValue: oamapShortSeed,
         onToggle: (v) => save(kOamapShortSeedKey, v),
       ),
+      if (kOamapCursorPlus)
+        SettingsTile(
+          title: const Text('원격 마우스 포인터 크기'),
+          value: Text(oamapCursorScale == 1.0
+              ? '1배'
+              : (oamapCursorScale == 2.0 ? '2배' : '1.5배')),
+          onPressed: (context) async {
+            final i = kOamapCursorScales.indexOf(oamapCursorScale);
+            final next = kOamapCursorScales[(i + 1) % kOamapCursorScales.length];
+            await bind.mainSetLocalOption(
+                key: kOamapCursorScaleKey, value: next.toString());
+            refresh();
+          },
+        ),
     ],
   );
 }

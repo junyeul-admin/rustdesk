@@ -26,6 +26,7 @@ import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
 import '../../oamap/oamap_typing.dart'; // OAMap 0008
+import '../../oamap/oamap_cursor.dart'; // OAMap 0011
 import '../../oamap/oamap_pan.dart'; // OAMap 0005
 import '../../oamap/oamap_view.dart'; // OAMap 0004
 import '../../oamap/oamap_session.dart'; // OAMap 0003
@@ -1043,8 +1044,9 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
   InputModel get inputModel => gFFI.inputModel;
 
   Widget wrap(String text, void Function() onPressed,
-      {bool? active, IconData? icon}) {
+      {bool? active, IconData? icon, void Function()? onLongPress}) {
     return TextButton(
+        onLongPress: onLongPress, // OAMap 0009 (Win: hold = stay pressed)
         style: TextButton.styleFrom(
           minimumSize: Size(0, 0),
           padding: EdgeInsets.symmetric(vertical: 10, horizontal: 9.75),
@@ -1116,9 +1118,21 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
               wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
                 sendPrompt(isMac, 'VK_V');
               }),
+              wrap(isMac ? 'Cmd+F' : 'Ctrl+F', () {
+                sendPrompt(isMac, 'VK_F');
+              }),
+              // Tap = press the Windows key (Start menu); hold = keep it down
+              // for the next key (Win+R ...), tap again to release.
               wrap(isMac ? ' Cmd ' : ' Win ', () {
-                setState(() => inputModel.command = !inputModel.command);
-              }, active: inputModel.command),
+                if (inputModel.command) {
+                  setState(() => inputModel.command = false);
+                } else {
+                  inputModel.inputKey('Meta');
+                }
+              },
+                  active: inputModel.command,
+                  onLongPress: () =>
+                      setState(() => inputModel.command = true)),
               wrap('Ctrl ', () {
                 setState(() => inputModel.ctrl = !inputModel.ctrl);
               }, active: inputModel.ctrl),
@@ -1365,6 +1379,19 @@ class CursorPaint extends StatelessWidget {
     }
     final s2 = s < mins ? mins : s;
     final adjust = c.getAdjustY();
+    if (kOamapCursorPlus) {
+      // OAMap 0011: bigger pointer with a yellow outline
+      return CustomPaint(
+        painter: OamapCursorPainter(
+            image: image,
+            x: (m.x - hotx) * factor + c.x / s2,
+            y: (m.y - hoty) * factor + (c.y + adjust) / s2,
+            scale: s2,
+            hotx: hotx,
+            hoty: hoty,
+            k: oamapCursorScale),
+      );
+    }
     return CustomPaint(
       painter: ImagePainter(
           image: image,
