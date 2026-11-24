@@ -86,3 +86,16 @@ index 2da5a8d..585dc85 100644
 +  }
 +  return KeyEventResult.ignored;
 +}
+diff --git a/flutter/lib/oamap/oamap_typing.dart b/flutter/lib/oamap/oamap_typing.dart
+index 49f7ae7..0d2896b 100644
+--- a/flutter/lib/oamap/oamap_typing.dart
++++ b/flutter/lib/oamap/oamap_typing.dart
+@@ -50,7 +50,7 @@ bool _oamapOpt(String key, bool def) {
+ bool get oamapTypingLowFps =>
+     kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
+ bool get oamapCommitOnly =>
+-    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, true);
++    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, false); // OAMap 0013: default off (real cause was the key event)
+ bool get oamapShortSeed =>
+     kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, true);
+ 
