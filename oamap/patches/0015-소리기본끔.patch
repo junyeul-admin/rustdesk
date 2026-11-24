@@ -1,0 +1,80 @@
+diff --git a/.github/oamap/check_hooks.cjs b/.github/oamap/check_hooks.cjs
+index 89196b7..19b1d70 100644
+--- a/.github/oamap/check_hooks.cjs
++++ b/.github/oamap/check_hooks.cjs
+@@ -8,6 +8,7 @@ const need = [
+   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.flush(); // OAMap 0012'],
+   ['0013', 'flutter/lib/mobile/pages/remote_page.dart', 'onKeyEvent: oamapSoftKeyFilter,'],
+   ['0014', 'flutter/lib/mobile/pages/remote_page.dart', 'image: oamapCleanCursor(img),'],
++  ['0015', 'flutter/lib/mobile/pages/remote_page.dart', 'oamapMuteOnStart(gFFI);'],
+   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'enableIMEPersonalizedLearning: !kOamapImeNoLearning,'],
+   ['0002', 'flutter/lib/mobile/pages/remote_page.dart', '...oamapImeKeys(wrap, inputModel, isMac),'],
+   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.open();'],
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 96eb864..91f8a36 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -158,6 +158,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
+     _blockableOverlayState.applyFfi(gFFI);
+     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
++      oamapMuteOnStart(gFFI); // OAMap 0015: sound off by default
+       gFFI.recordingModel
+           .updateStatus(bind.sessionGetIsRecording(sessionId: gFFI.sessionId));
+       if (gFFI.recordingModel.start) {
+@@ -1132,6 +1133,15 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+               wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
+                 sendPrompt(isMac, 'VK_V');
+               }),
++              // OAMap 0015: sound on / off for this session
++              wrap('', () async {
++                await oamapToggleMute(gFFI);
++                if (mounted) setState(() {});
++              },
++                  active: !oamapMuted(gFFI),
++                  icon: oamapMuted(gFFI)
++                      ? Icons.volume_off
++                      : Icons.volume_up),
+               wrap(isMac ? 'Cmd+F' : 'Ctrl+F', () {
+                 sendPrompt(isMac, 'VK_F');
+               }),
+diff --git a/flutter/lib/oamap/oamap_keys.dart b/flutter/lib/oamap/oamap_keys.dart
+index 20fdab1..43727d8 100644
+--- a/flutter/lib/oamap/oamap_keys.dart
++++ b/flutter/lib/oamap/oamap_keys.dart
+@@ -17,6 +17,8 @@
+ import 'package:flutter/widgets.dart';
+ 
+ import '../models/input_model.dart';
++import '../models/model.dart';
++import '../models/platform_model.dart';
+ 
+ const bool kOamapImeKeys =
+     bool.fromEnvironment('OAMAP_IME_KEYS', defaultValue: true);
+@@ -71,3 +73,26 @@ Widget oamapCompactKeyRow({
+     ],
+   );
+ }
++
++// OAMap add-on 0015: sound from the remote PC is off by default.
++// Owner: remote work is often done in quiet places. When a session shows its
++// first picture the session is muted (upstream option 'disable-audio', the
++// same switch as the toolbar's Mute). The one-row key bar gets a speaker
++// button to turn it on / off for this session.
++// Turn off: --dart-define=OAMAP_MUTE_DEFAULT=false
++const bool kOamapMuteDefault =
++    bool.fromEnvironment('OAMAP_MUTE_DEFAULT', defaultValue: true);
++const String _kAudioOpt = 'disable-audio';
++
++bool oamapMuted(FFI ffi) =>
++    bind.sessionGetToggleOptionSync(sessionId: ffi.sessionId, arg: _kAudioOpt);
++
++Future<void> oamapMuteOnStart(FFI ffi) async {
++  if (!kOamapMuteDefault) return;
++  if (!oamapMuted(ffi)) {
++    await bind.sessionToggleOption(sessionId: ffi.sessionId, value: _kAudioOpt);
++  }
++}
++
++Future<void> oamapToggleMute(FFI ffi) =>
++    bind.sessionToggleOption(sessionId: ffi.sessionId, value: _kAudioOpt);
