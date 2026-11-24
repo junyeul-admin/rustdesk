@@ -1,5 +1,5 @@
 diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
-index 0a5f048..1d157c0 100644
+index 0a5f048..8fc7a5f 100644
 --- a/flutter/lib/mobile/pages/remote_page.dart
 +++ b/flutter/lib/mobile/pages/remote_page.dart
 @@ -1034,6 +1034,8 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
@@ -11,7 +11,7 @@ index 0a5f048..1d157c0 100644
    final _keyboardVisibilityController = KeyboardVisibilityController();
    final _key = GlobalKey();
  
-@@ -1091,6 +1093,40 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1091,6 +1093,56 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
  
      final pi = gFFI.ffiModel.pi;
      final isMac = pi.platform == kPeerPlatformMacOS;
@@ -27,19 +27,35 @@ index 0a5f048..1d157c0 100644
 +          color: Color(0xAA000000),
 +          padding: EdgeInsets.only(top: 24, bottom: 4, left: 4, right: 4),
 +          child: oamapCompactKeyRow(
-+            copy: wrap(isMac ? 'Cmd+C' : 'Ctrl+C', () {
-+              sendPrompt(isMac, 'VK_C');
-+            }),
-+            paste: wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
-+              sendPrompt(isMac, 'VK_V');
-+            }),
-+            ctrl: wrap('Ctrl ', () {
-+              setState(() => inputModel.ctrl = !inputModel.ctrl);
-+            }, active: inputModel.ctrl),
-+            alt: wrap(' Alt ', () {
-+              setState(() => inputModel.alt = !inputModel.alt);
-+            }, active: inputModel.alt),
-+            imeKeys: oamapImeKeys(wrap, inputModel, isMac, hangulOnly: true),
++            keys: [
++              wrap(isMac ? 'Cmd+C' : 'Ctrl+C', () {
++                sendPrompt(isMac, 'VK_C');
++              }),
++              wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
++                sendPrompt(isMac, 'VK_V');
++              }),
++              wrap('Ctrl ', () {
++                setState(() => inputModel.ctrl = !inputModel.ctrl);
++              }, active: inputModel.ctrl),
++              wrap(' Alt ', () {
++                setState(() => inputModel.alt = !inputModel.alt);
++              }, active: inputModel.alt),
++              wrap(isMac ? ' Cmd ' : ' Win ', () {
++                setState(() => inputModel.command = !inputModel.command);
++              }, active: inputModel.command),
++              wrap('', () {
++                inputModel.inputKey('VK_LEFT');
++              }, icon: Icons.keyboard_arrow_left),
++              wrap('', () {
++                inputModel.inputKey('VK_UP');
++              }, icon: Icons.keyboard_arrow_up),
++              wrap('', () {
++                inputModel.inputKey('VK_DOWN');
++              }, icon: Icons.keyboard_arrow_down),
++              wrap('', () {
++                inputModel.inputKey('VK_RIGHT');
++              }, icon: Icons.keyboard_arrow_right),
++            ],
 +            more: wrap('', () {
 +              setState(() {
 +                _oamapCompact = false;
@@ -52,7 +68,7 @@ index 0a5f048..1d157c0 100644
      final isWin = pi.platform == kPeerPlatformWindows;
      final isLinux = pi.platform == kPeerPlatformLinux;
      final modifiers = <Widget>[
-@@ -1131,6 +1167,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
+@@ -1131,6 +1183,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
            ' ... ',
            () => setState(
                  () {
@@ -64,7 +80,7 @@ index 0a5f048..1d157c0 100644
                    if (_more) {
                      _fn = false;
 diff --git a/flutter/lib/oamap/oamap_keys.dart b/flutter/lib/oamap/oamap_keys.dart
-index bc00fcb..5f2d913 100644
+index bc00fcb..b41804b 100644
 --- a/flutter/lib/oamap/oamap_keys.dart
 +++ b/flutter/lib/oamap/oamap_keys.dart
 @@ -6,6 +6,13 @@
@@ -73,7 +89,7 @@ index bc00fcb..5f2d913 100644
  // Turn off at build time: --dart-define=OAMAP_IME_KEYS=false
 +//
 +// OAMap add-on 0009: while the soft keyboard is open the key bar is one short
-+// row - [Ctrl+C] [Ctrl+V] [한/영] [Ctrl] [Alt] ... [⋯]. [⋯] opens the full upstream bar, its
++// row - [Ctrl+C] [Ctrl+V] [Ctrl] [Alt] [Win] [←][↑][↓][→] ... [⋯]. [⋯] opens the full upstream bar, its
 +// own [...] button comes back to the short row. Each time the keyboard opens
 +// the bar starts short again.
 +//
@@ -81,7 +97,7 @@ index bc00fcb..5f2d913 100644
  
  import 'package:flutter/widgets.dart';
  
-@@ -14,14 +21,44 @@ import '../models/input_model.dart';
+@@ -14,14 +21,46 @@ import '../models/input_model.dart';
  const bool kOamapImeKeys =
      bool.fromEnvironment('OAMAP_IME_KEYS', defaultValue: true);
  
@@ -103,27 +119,29 @@ index bc00fcb..5f2d913 100644
    ];
  }
 +
-+/// The short row: copy, paste, IME key, modifiers on the left, [more] at the end.
++/// The short row: [keys] scroll sideways on a narrow phone, [more] stays at
++/// the end.
 +Widget oamapCompactKeyRow({
-+  required Widget copy,
-+  required Widget paste,
-+  required Widget ctrl,
-+  required Widget alt,
-+  required List<Widget> imeKeys,
++  required List<Widget> keys,
 +  required Widget more,
 +}) {
 +  const gap = SizedBox(width: 4);
 +  return Row(
 +    children: [
-+      copy,
++      Expanded(
++        child: SingleChildScrollView(
++          scrollDirection: Axis.horizontal,
++          child: Row(
++            children: [
++              for (var i = 0; i < keys.length; i++) ...[
++                if (i > 0) gap,
++                keys[i],
++              ],
++            ],
++          ),
++        ),
++      ),
 +      gap,
-+      paste,
-+      for (final k in imeKeys) ...[gap, k],
-+      gap,
-+      ctrl,
-+      gap,
-+      alt,
-+      const Spacer(),
 +      more,
 +    ],
 +  );
