@@ -99,7 +99,9 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "com.carriez.flutter_hbb"
+        // OAMap 0006: own app id / name (gradle -PoamapAppId=... -PoamapAppLabel=...)
+        applicationId project.findProperty("oamapAppId") ?: "kr.oamap.remote"
+        resValue "string", "oamap_app_label", project.findProperty("oamapAppLabel") ?: "OAMap 원격"
         minSdkVersion 22
         targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()

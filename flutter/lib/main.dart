@@ -29,6 +29,7 @@ import 'mobile/pages/home_page.dart';
 import 'mobile/pages/server_page.dart';
 import 'mobile/widgets/deploy_dialog.dart';
 import 'models/platform_model.dart';
+import 'package:flutter_hbb/oamap/oamap_brand.dart'; // OAMap 0006
 
 /// Basic window and launch properties.
 int? kWindowId;
@@ -175,7 +176,7 @@ void runMainApp(bool startService) async {
 
 void runMobileApp() async {
   await initEnv(kAppTypeMain);
-  checkUpdate();
+  if (kOamapUpdateCheck) checkUpdate(); // OAMap 0006: off in our build
   if (isAndroid) androidChannelInit();
   if (isAndroid) platformFFI.syncAndroidServiceAppDirConfigPath();
   draggablePositions.load();
