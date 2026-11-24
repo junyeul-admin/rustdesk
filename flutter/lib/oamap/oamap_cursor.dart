@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../models/platform_model.dart';
+import 'oamap_cursor_clean.dart';
 
 const bool kOamapCursorPlus =
     bool.fromEnvironment('OAMAP_CURSOR_PLUS', defaultValue: true);
@@ -106,8 +107,6 @@ class OamapCursorPainter extends CustomPainter {
 // alpha < 24 dropped, then only connected parts at least 25 % the size of the
 // biggest part are kept. Until the cleaned copy is ready (one frame) the
 // original is drawn. Cleaning never moves the hotspot (same size picture).
-const int _kCleanAlpha = 24;
-const double _kCleanKeep = 0.25;
 
 final ValueNotifier<int> oamapCursorTick = ValueNotifier<int>(0);
 final Map<ui.Image, ui.Image> _oamapClean = <ui.Image, ui.Image>{};
@@ -130,52 +129,6 @@ ui.Image oamapCleanCursor(ui.Image img) {
     });
   }
   return img;
-}
-
-/// Pure part (tested): rgba bytes of a w x h picture -> cleaned copy.
-Uint8List oamapCleanRgba(Uint8List rgba, int w, int h) {
-  final n = w * h;
-  final label = Int32List(n);
-  final sizes = <int>[0];
-  final stack = <int>[];
-  for (var i = 0; i < n; i++) {
-    if (label[i] != 0 || rgba[i * 4 + 3] < _kCleanAlpha) continue;
-    final id = sizes.length;
-    var size = 0;
-    label[i] = id;
-    stack.add(i);
-    while (stack.isNotEmpty) {
-      final p = stack.removeLast();
-      size++;
-      final px = p % w, py = p ~/ w;
-      for (var dy = -1; dy <= 1; dy++) {
-        for (var dx = -1; dx <= 1; dx++) {
-          final nx = px + dx, ny = py + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-          final q = ny * w + nx;
-          if (label[q] != 0 || rgba[q * 4 + 3] < _kCleanAlpha) continue;
-          label[q] = id;
-          stack.add(q);
-        }
-      }
-    }
-    sizes.add(size);
-  }
-  var biggest = 0;
-  for (final s in sizes) {
-    if (s > biggest) biggest = s;
-  }
-  final out = Uint8List.fromList(rgba);
-  for (var i = 0; i < n; i++) {
-    final l = label[i];
-    if (l == 0 || sizes[l] < biggest * _kCleanKeep) {
-      out[i * 4] = 0;
-      out[i * 4 + 1] = 0;
-      out[i * 4 + 2] = 0;
-      out[i * 4 + 3] = 0;
-    }
-  }
-  return out;
 }
 
 Future<ui.Image> _oamapMakeClean(ui.Image img) async {

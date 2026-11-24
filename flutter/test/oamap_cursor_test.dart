@@ -1,6 +1,6 @@
 // OAMap add-on 0014 test: stray specks removed from the pointer picture.
 import 'dart:typed_data';
-import 'package:flutter_hbb/oamap/oamap_cursor.dart';
+import 'package:flutter_hbb/oamap/oamap_cursor_clean.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Uint8List pic(int w, int h, List<List<int>> on) {
