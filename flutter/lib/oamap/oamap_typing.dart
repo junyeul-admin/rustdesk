@@ -30,12 +30,14 @@ import 'package:settings_ui/settings_ui.dart';
 import '../models/model.dart';
 import '../models/platform_model.dart';
 import 'oamap_cursor.dart';
+import 'oamap_input.dart';
 
 const bool kOamapTypingTune =
     bool.fromEnvironment('OAMAP_TYPING_TUNE', defaultValue: true);
 
 const String kOamapTypingLowFpsKey = 'oamap-typing-low-fps';
 const String kOamapShortSeedKey = 'oamap-short-seed';
+const String kOamapCommitOnlyKey = 'oamap-commit-only'; // OAMap 0012
 const int kOamapTypingFps = 10;
 
 bool _oamapOpt(String key, bool def) {
@@ -47,6 +49,8 @@ bool _oamapOpt(String key, bool def) {
 
 bool get oamapTypingLowFps =>
     kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
+bool get oamapCommitOnly =>
+    kOamapCommitOnlyDefault && _oamapOpt(kOamapCommitOnlyKey, true);
 bool get oamapShortSeed =>
     kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, true);
 
@@ -108,6 +112,11 @@ AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
         title: const Text('자판 열면 화면 속도 낮춤(한글 입력 빠르게)'),
         initialValue: oamapTypingLowFps,
         onToggle: (v) => save(kOamapTypingLowFpsKey, v),
+      ),
+      SettingsTile.switchTile(
+        title: const Text('완성된 글자만 보내기(한글 오타 줄이기)'),
+        initialValue: oamapCommitOnly,
+        onToggle: (v) => save(kOamapCommitOnlyKey, v),
       ),
       SettingsTile.switchTile(
         title: const Text('숨은 입력칸 짧게(한글 오타 줄이기)'),

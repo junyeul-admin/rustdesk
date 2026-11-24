@@ -104,6 +104,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
   final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
   final _oamapTypingFps = OamapTypingFps(gFFI); // OAMap 0008
+  final _oamapCompose = OamapComposeSender(initText); // OAMap 0012
   Timer? _iosKeyboardWorkaroundTimer;
 
   final _blockableOverlayState = BlockableOverlayState();
@@ -209,6 +210,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     unawaited(bind.sessionClose(sessionId: sessionId));
     _oamapKeeper.close(); // OAMap 0003 (before any await)
     _oamapKbCanvas.dispose(); // OAMap 0004
+    _oamapCompose.dispose(); // OAMap 0012
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     gFFI.dialogManager.hideMobileActionsOverlay(store: false);
@@ -307,6 +309,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void onSoftKeyboardChanged(bool visible) {
     _oamapTypingFps.onKeyboard(visible); // OAMap 0008
     if (!visible) {
+      _oamapCompose.flush(); // OAMap 0012
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
       if (gFFI.chatModel.chatWindowOverlayEntry == null &&
@@ -397,10 +400,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     _value = newValue;
     if (kOamapHangulInput) {
       // OAMap 0001: prefix diff for composing IMEs (flutter/lib/oamap/oamap_input.dart)
-      oamapSoftKeyboardDiff(oldValue, newValue,
-          back: () => inputModel.inputKey('VK_BACK'),
-          char: inputChar,
-          string: (s) => bind.sessionInputString(sessionId: sessionId, value: s));
+      // OAMap 0012: only finished syllables are sent (OamapComposeSender)
+      _oamapCompose.handle(_textController.value, newValue, oamapCommitOnly,
+          (o, n) => oamapSoftKeyboardDiff(o, n,
+              back: () => inputModel.inputKey('VK_BACK'),
+              char: inputChar,
+              string: (s) =>
+                  bind.sessionInputString(sessionId: sessionId, value: s)));
       return;
     }
     if (oldValue.isNotEmpty &&
@@ -496,6 +502,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     gFFI.invokeMethod("enable_soft_keyboard", true);
     // destroy first, so that our _value trick can work
     _value = initText;
+    _oamapCompose.flush(); // OAMap 0012: send what the last field still held
+    _oamapCompose.reset(_value);
     _textController.text = _value;
     setState(() => _showEdit = false);
     _timer?.cancel();

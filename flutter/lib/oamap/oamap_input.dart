@@ -10,6 +10,10 @@
 //
 // Turn off at build time: --dart-define=OAMAP_HANGUL_INPUT=false
 
+import 'dart:async';
+
+import 'package:flutter/services.dart';
+
 const bool kOamapHangulInput =
     bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
 
@@ -67,5 +71,79 @@ void oamapSoftKeyboardDiff(
     string(tail);
   } else {
     char(tail);
+  }
+}
+
+// OAMap add-on 0012: send only finished syllables.
+//
+// Field report: Samsung Cheonjiin "안녕하세요" always arrived as "안녕하8요"
+// while the remote PC's own Korean IME was in Hangul mode. The prefix diff
+// above sent every intermediate composing state (ㅅ, ㅅᆞ, 서, 세 ...) as
+// typed characters plus VK_BACK, and the PC's IME mixed some of them up.
+// Now the text inside the composing range (the syllable still being built) is
+// held back; it is sent once it is committed (next syllable, space, enter),
+// after [idle] without a change, or when the keyboard closes (flush).
+// Turn off in Settings > OAMap (or --dart-define=OAMAP_COMMIT_ONLY=false).
+const bool kOamapCommitOnlyDefault =
+    bool.fromEnvironment('OAMAP_COMMIT_ONLY', defaultValue: true);
+
+class OamapComposeSender {
+  OamapComposeSender(String seed, {this.idle = const Duration(milliseconds: 800)})
+      : _sent = seed,
+        _latest = seed;
+
+  final Duration idle;
+  String _sent;
+  String _latest;
+  Timer? _timer;
+  void Function(String oldValue, String newValue)? _send;
+
+  String get sent => _sent;
+
+  void reset(String seed) {
+    _timer?.cancel();
+    _timer = null;
+    _sent = seed;
+    _latest = seed;
+  }
+
+  /// [value] = controller value at onChanged time (text + composing range).
+  void handle(TextEditingValue value, String newValue, bool commitOnly,
+      void Function(String oldValue, String newValue) send) {
+    _send = send;
+    _latest = newValue;
+    _timer?.cancel();
+    _timer = null;
+    var target = newValue;
+    final c = value.composing;
+    if (commitOnly &&
+        value.text == newValue &&
+        c.isValid &&
+        !c.isCollapsed &&
+        c.start >= 0 &&
+        c.end == newValue.length) {
+      target = newValue.substring(0, c.start);
+      _timer = Timer(idle, flush);
+    }
+    _emit(target);
+  }
+
+  void flush() {
+    _timer?.cancel();
+    _timer = null;
+    _emit(_latest);
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _emit(String target) {
+    final send = _send;
+    if (send == null || target == _sent) return;
+    final old = _sent;
+    _sent = target;
+    send(old, target);
   }
 }
