@@ -110,3 +110,457 @@ index 0000000..bc0243b
 +    char(tail);
 +  }
 +}
+diff --git a/flutter/test/oamap_input_test.dart b/flutter/test/oamap_input_test.dart
+new file mode 100644
+index 0000000..8393867
+--- /dev/null
++++ b/flutter/test/oamap_input_test.dart
+@@ -0,0 +1,448 @@
++// OAMap add-on 0001 test: runs the real oamapSoftKeyboardDiff
++// (lib/oamap/oamap_input.dart) on the 63 soft keyboard cases of
++// .github/oamap/sim_input.cjs: same IME steps in the same order, same expected
++// text, same remote field model (text + caret, VK_BACK deletes one code
++// point). The six numbers per case (VK_BACK, keys, strings, string chars, key
++// route, onChanged calls) are the node simulation's ADDON numbers, so the Dart
++// code and the node mirror must send exactly the same keys.
++//   cd flutter && flutter test test/oamap_input_test.dart
++// The case lines below (C(...)) are kept in the same shape as sim_input.cjs.
++
++import 'dart:math';
++
++import 'package:flutter_hbb/oamap/oamap_input.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++// remote_page.dart: final initText = '1' * 1024;
++final String _init = '1' * 1024;
++
++bool _hi(int u) => (u & 0xFC00) == 0xD800;
++bool _lo(int u) => (u & 0xFC00) == 0xDC00;
++
++// Code units of the character (code point) just before index i.
++int _cpBefore(String s, int i) =>
++    (i >= 2 && _lo(s.codeUnitAt(i - 1)) && _hi(s.codeUnitAt(i - 2))) ? 2 : 1;
++
++String _dropLast(String s) =>
++    s.isEmpty ? s : s.substring(0, s.length - _cpBefore(s, s.length));
++
++// Remote PC text field: inputModel.inputKey / bind.sessionInputString.
++class _Remote {
++  _Remote(this.text) : caret = text.length;
++
++  String text;
++  int caret;
++  int back = 0;
++  int keys = 0;
++  int strings = 0;
++  int strChars = 0;
++
++  void _insert(String s) {
++    text = text.substring(0, caret) + s + text.substring(caret);
++    caret += s.length;
++  }
++
++  void inputKey(String name) {
++    keys++;
++    if (name == 'VK_BACK') {
++      back++;
++      if (caret > 0) {
++        final n = _cpBefore(text, caret);
++        text = text.substring(0, caret - n) + text.substring(caret);
++        caret -= n;
++      }
++    } else if (name == 'VK_RETURN') {
++      _insert('\n');
++    } else if (name == 'VK_SPACE') {
++      _insert(' ');
++    } else if (name == 'VK_LEFT') {
++      if (caret > 0) caret -= _cpBefore(text, caret);
++    } else if (name == 'VK_RIGHT') {
++      if (caret < text.length) caret += _hi(text.codeUnitAt(caret)) ? 2 : 1;
++    } else {
++      _insert(name);
++    }
++  }
++
++  void sessionInputString(String value) {
++    strings++;
++    strChars += value.length;
++    _insert(value);
++  }
++}
++
++// remote_page.dart: _value, inputChar, _handleNonIOSSoftKeyboardInput
++// (the OAMap 0001 branch, kOamapHangulInput = true).
++class _Page {
++  _Page(this.remote);
++
++  final _Remote remote;
++  String value = _init;
++
++  void inputChar(String char) {
++    var key = char;
++    if (key == '\n') {
++      key = 'VK_RETURN';
++    } else if (key == ' ') {
++      key = 'VK_SPACE';
++    }
++    remote.inputKey(key);
++  }
++
++  void handleNonIOSSoftKeyboardInput(String newValue) {
++    final oldValue = value;
++    value = newValue;
++    oamapSoftKeyboardDiff(oldValue, newValue,
++        back: () => remote.inputKey('VK_BACK'),
++        char: inputChar,
++        string: (s) => remote.sessionInputString(s));
++  }
++}
++
++// Phone keyboard (IME): the hidden field is '1' * sent + user, onChanged only
++// when the whole value changes. base + user = what the remote field should hold.
++class Ime {
++  Ime(String r0)
++      : base = r0,
++        remote = _Remote(r0) {
++    page = _Page(remote);
++    prev = _field();
++  }
++
++  final _Remote remote;
++  late final _Page page;
++  String base;
++  int sent = 1024;
++  String user = '';
++  int caret = 0;
++  int wordStart = 0;
++  int keyRoute = 0;
++  int changes = 0;
++  late String prev;
++
++  String _field() => ('1' * sent) + user;
++
++  void _emit() {
++    final f = _field();
++    if (f != prev) {
++      changes++;
++      page.handleNonIOSSoftKeyboardInput(f);
++      prev = _field();
++    }
++  }
++
++  // _openKeyboardUnlocked: new phone field, the remote field is unchanged.
++  void _resetField() {
++    base += user;
++    user = '';
++    caret = 0;
++    wordStart = 0;
++    sent = 1024;
++    page.value = _init;
++  }
++
++  // Composing word (wordStart..caret) becomes s.
++  void w(String s) {
++    user = user.substring(0, wordStart) + s + user.substring(caret);
++    caret = wordStart + s.length;
++    _emit();
++  }
++
++  // Some Gboard versions: empty the composing word first, then set it.
++  void w2(String s) {
++    user = user.substring(0, wordStart) + user.substring(caret);
++    caret = wordStart;
++    _emit();
++    w(s);
++  }
++
++  // Committed text at the caret (one onChanged).
++  void ins(String s) {
++    user = user.substring(0, caret) + s + user.substring(caret);
++    caret += s.length;
++    wordStart = caret;
++    _emit();
++  }
++
++  // One backspace (g = code units of a combined emoji).
++  void bs([int g = 0]) {
++    if (caret > 0) {
++      final n = g != 0 ? g : _cpBefore(user, caret);
++      user = user.substring(0, caret - n) + user.substring(caret);
++      caret -= n;
++      wordStart = min(wordStart, caret);
++      _emit();
++    } else if (sent > 0) {
++      sent--;
++      base = _dropLast(base);
++      _emit();
++    } else {
++      // empty field: no onChanged, VK_BACK goes by the key event route
++      keyRoute++;
++      remote.inputKey('VK_BACK');
++      base = _dropLast(base);
++    }
++  }
++
++  // n code units before the caret become s (autocorrect, prediction).
++  void repl(int n, String s) {
++    user = user.substring(0, caret - n) + s + user.substring(caret);
++    caret = caret - n + s.length;
++    wordStart = caret;
++    _emit();
++  }
++
++  // setSelection: caret only, no onChanged.
++  void caretTo(int i) {
++    caret = i;
++    wordStart = i;
++  }
++
++  // Arrow key events: the remote caret moves, the phone field does not.
++  void dpad(String dir, int n) {
++    for (var k = 0; k < n; k++) {
++      remote.inputKey(dir);
++    }
++  }
++
++  void selectAllPaste(String s) {
++    sent = 0;
++    user = s;
++    caret = s.length;
++    wordStart = caret;
++    _emit();
++  }
++
++  void reopen() {
++    _resetField();
++    prev = _field();
++  }
++
++  // Auto-paired punctuation: both come in, caret between them.
++  void pair(String p) {
++    user = user.substring(0, caret) + p + user.substring(caret);
++    caret += 1;
++    wordStart = caret;
++    _emit();
++  }
++
++  // Closing symbol typed over: caret moves one, text unchanged.
++  void overtype() {
++    caret += 1;
++    wordStart = caret;
++  }
++}
++
++class _Case {
++  _Case(this.group, this.name, this.ops, this.r0, this.want, this.known);
++
++  final String group;
++  final String name;
++  final void Function(Ime) ops;
++  final String? r0;
++  final String Function()? want;
++  // Known limitation: what the remote field really ends up with.
++  final String? known;
++}
++
++final List<_Case> _cases = [];
++
++// ignore: non_constant_identifier_names
++void C(String group, String name, void Function(Ime) ops,
++    {String? r0, String Function()? want, String? known}) {
++  _cases.add(_Case(group, name, ops, r0, want, known));
++}
++
++// ignore: non_constant_identifier_names
++void W(Ime A, List<String> list) {
++  for (final s in list) {
++    A.w(s);
++  }
++}
++
++// ignore: constant_identifier_names
++const String R0 = '메모:';
++// ignore: non_constant_identifier_names
++final String LONG = '가나다라마바사아자차카타파하' * 15 + '끝';
++
++void _defineCases() {
++  // @@CASES-BEGIN (same order as sim_input.cjs)
++  C('천지인', '이준열', (A) => W(A, ['ㅇ', '이', '잊', '이즈', '이주', '이준', '이준ㅇ', '이준ㅇᆞ', '이준ㅇᆢ', '이준여', '이준연', '이준열']));
++  C('천지인', '안녕하세요', (A) => W(A, ['ㅇ', '이', '아', '안', '안ㄴ', '안ㄴᆞ', '안ㄴᆢ', '안녀', '안녕', '안녕ㅅ', '안녕ㅎ', '안녕히', '안녕하', '안녕핫', '안녕하ㅅᆞ', '안녕하서', '안녕하세', '안녕하셍', '안녕하세ㅇᆞ', '안녕하세ㅇᆢ', '안녕하세요']));
++  C('천지인', '획 추가 이→아→야', (A) => W(A, ['ㅇ', '이', '아', '야']));
++  C('천지인', '으→우→유', (A) => W(A, ['ㅇ', '으', '우', '유']));
++  C('천지인', '아→애', (A) => W(A, ['ㅇ', '이', '아', '애']));
++  C('천지인', '된소리 ㄱ→ㅋ→ㄲ 받침', (A) => W(A, ['ㄱ', '기', '가', '각', '갘', '갂']));
++  C('천지인', '된소리 받침 넘김 가끼', (A) => W(A, ['ㄱ', '기', '가', '각', '갘', '갂', '가끼']));
++  C('천지인', '받침이 다음 글자로 이준→이주녀', (A) => W(A, ['ㅇ', '이', '잊', '이즈', '이주', '이준', '이준ᆞ', '이준ᆢ', '이주녀']));
++  C('천지인', 'ㄴㄹ 키 두 번 단→달', (A) => W(A, ['ㄷ', '디', '다', '단', '달']));
++  C('천지인', '겹받침 값→갑시', (A) => W(A, ['ㄱ', '기', '가', '갑', '값', '갑시']));
++  C('천지인', '띄어쓰기 안녕 하세요', (A) { W(A, ['ㅇ', '이', '아', '안', '안ㄴ', '안ㄴᆞ', '안ㄴᆢ', '안녀', '안녕']); A.ins(' '); W(A, ['ㅅ', 'ㅎ', '히', '하', '핫', '하ㅅᆞ', '하서', '하세', '하셍', '하세ㅇᆞ', '하세ㅇᆢ', '하세요']); });
++  C('천지인', '조합 중 지우기 인→이→ㅇ→아', (A) => W(A, ['ㅇ', '이', '인', '이', 'ㅇ', '이', '아']));
++  C('천지인', '조합 중 다 지움(빈 낱말)', (A) => W(A, ['ㅇ', '이', 'ㅇ', '']));
++
++  C('쿼티', '이준열', (A) => W(A, ['ㅇ', '이', '잊', '이주', '이준', '이준ㅇ', '이준여', '이준열']));
++  C('쿼티', '닭+ㅏ→달가', (A) => W(A, ['ㄷ', '다', '달', '닭', '달가']));
++  C('쿼티', '겹받침 넋→넋이', (A) => W(A, ['ㄴ', '너', '넉', '넋', '넋ㅇ', '넋이']));
++  C('쿼티', '겹받침 넋+ㅏ→넉사', (A) => W(A, ['ㄴ', '너', '넉', '넋', '넉사']));
++  C('쿼티', 'ㄺ 읽고', (A) => W(A, ['ㅇ', '이', '일', '읽', '읽ㄱ', '읽고']));
++  C('쿼티', '조합 중 지우기 인→이', (A) => W(A, ['ㅇ', '이', '인', '이']));
++  C('쿼티', '확정 뒤 지우기 한글→한', (A) { W(A, ['ㅎ', '하', '한', '한ㄱ', '한그', '한글']); A.ins(' '); A.bs(); A.bs(); });
++  C('쿼티', '자음만 ㅋㅋㅋ', (A) => W(A, ['ㅋ', 'ㅋㅋ', 'ㅋㅋㅋ']));
++  C('쿼티', 'Gboard 빈 값 거침 이준열', (A) => ['ㅇ', '이', '잊', '이주', '이준', '이준ㅇ', '이준여', '이준열'].forEach((s) => A.w2(s)));
++  C('쿼티', '조합 중 엔터 한\\n', (A) { W(A, ['ㅎ', '하', '한']); A.ins('\n'); });
++
++  C('섞기', '한글+영문+숫자', (A) { W(A, ['ㄱ', '가']); A.ins('a'); A.ins('b'); A.ins('1'); A.ins('2'); W(A, ['ㄴ', '나']); });
++  C('섞기', '기호 가!?@#', (A) { W(A, ['ㄱ', '가']); ['!', '?', '@', '#'].forEach((c) => A.ins(c)); });
++  C('섞기', '숫자 123 (앞 1 과 같은 글자)', (A) { A.ins('1'); A.ins('2'); A.ins('3'); });
++  C('섞기', '1 치고 지우기', (A) { A.ins('1'); A.bs(); A.ins('1'); A.ins('1'); A.bs(); });
++  C('섞기', '띄어쓰기·엔터', (A) { W(A, ['ㅇ', '아', '안']); A.ins(' '); A.ins('a'); A.ins('\n'); A.ins('b'); A.ins(' '); A.ins(' '); });
++  C('섞기', '엔터 연속', (A) { A.ins('a'); A.ins('\n'); A.ins('\n'); A.ins('\n'); });
++  C('섞기', '주소창 www.naver.com', (A) { 'www.naver.com'.split('').forEach((c) => A.ins(c)); });
++  C('섞기', '안녕2개', (A) { W(A, ['ㅇ', '아', '안', '안ㄴ', '안녀', '안녕']); A.ins('2'); W(A, ['ㄱ', '개']); });
++
++  C('고침', '자동 고침 teh␣→the␣', (A) { A.ins('t'); A.ins('e'); A.ins('h'); A.repl(3, 'the '); });
++  C('고침', '앞 낱말 고침 I lvoe you→love', (A) { 'I lvoe you'.split('').forEach((c) => A.ins(c)); A.repl(8, 'love you'); });
++  C('고침', '자동 띄어쓰기 마침표 뒤', (A) { W(A, ['ㄴ', '네']); A.ins('.'); A.ins(' '); W(A, ['ㄴ', '네']); });
++  C('고침', '자동 띄어쓰기(마침표+공백 한 번에)', (A) { W(A, ['ㄴ', '네']); A.ins('. '); A.ins('O'); A.ins('K'); });
++  C('고침', '예측 고르기 안녕ㅎ→안녕하세요␣', (A) { W(A, ['ㅇ', '아', '안', '안ㄴ', '안녀', '안녕', '안녕ㅎ']); A.repl(3, '안녕하세요 '); });
++  C('고침', '예측 고르기 hel→hello␣', (A) { A.ins('h'); A.ins('e'); A.ins('l'); A.repl(3, 'hello '); });
++  C('고침', '긴 문장 앞부분 교정(200자 뒤)', (A) { A.ins(LONG); A.caretTo(LONG.length); A.repl(LONG.length, '고침' + LONG.substring(2)); });
++  C('고침', '대문자 자동 i→I', (A) { A.ins('i'); A.repl(1, 'I'); A.ins(' '); });
++
++  C('붙여넣기', '짧은 글 abc', (A) { A.ins('abc'); });
++  C('붙여넣기', '긴 글 2000자', (A) { A.ins('긴글' * 1000); });
++  C('붙여넣기', '글 뒤에 붙여넣기', (A) { W(A, ['ㄱ', '가']); A.ins(' 붙인 글'); });
++  C('붙여넣기', '전체 선택+붙여넣기(clipboard 갈래)', (A) { A.ins('abc'); A.selectAllPaste('NEW'); }, want: () => R0 + 'abcNEW');
++
++  C('커서', 'setSelection 가운데 입력 abc→axbc', (A) { A.ins('a'); A.ins('b'); A.ins('c'); A.caretTo(1); A.ins('x'); });
++  C('커서', 'setSelection 가운데 한글 조합', (A) { A.ins('a'); A.ins('b'); A.caretTo(1); W(A, ['ㄱ', '가', '각']); });
++  C('커서', 'setSelection 맨 앞(211자) 입력', (A) { A.ins(LONG); A.caretTo(0); A.ins('x'); A.ins('y'); });
++  C('커서', 'setSelection 가운데 지우기', (A) { A.ins('abcd'); A.caretTo(2); A.bs(); });
++  C('커서', '화살표 키 이벤트(손님 caret 도 같이)', (A) { A.ins('a'); A.ins('b'); A.ins('c'); A.dpad('VK_LEFT', 2); A.ins('x'); }, want: () => R0 + 'axbc');
++
++  C('지우기', '빈 칸에서 지우기 3번(기존 글 지움)', (A) { A.bs(); A.bs(); A.bs(); });
++  C('지우기', '1024 넘어 지우기(1030번)', (A) { for (var i = 0; i < 1030; i++) A.bs(); }, r0: 'x' * 2000);
++  C('지우기', '다 지운 뒤 다시 입력', (A) { for (var i = 0; i < 1024; i++) A.bs(); W(A, ['ㄱ', '가']); A.ins('1'); }, r0: 'y' * 1100);
++  C('지우기', '다 지운 뒤 1a 치고 앞 1 지움(알려진 한계)', (A) { for (var i = 0; i < 1024; i++) A.bs(); A.ins('1'); A.ins('a'); A.caretTo(1); A.bs(); }, r0: 'z' * 1100, known: 'z' * 76 + '1aa');
++  C('지우기', '낱말 통째 지우기 hello world→hello ', (A) { 'hello world'.split('').forEach((c) => A.ins(c)); A.repl(5, ''); });
++  C('지우기', '길게 눌러 20번', (A) { A.ins('abcdefghijklmnopqrstuvwxyz'); for (var i = 0; i < 20; i++) A.bs(); });
++
++  C('이모지', '이모지 넣기 😀', (A) { A.ins('a'); A.ins('😀'); });
++  C('이모지', '이모지 지우기 a😀→a', (A) { A.ins('a'); A.ins('😀'); A.bs(); });
++  C('이모지', '이모지 바꿈 😀→😁(예측)', (A) { A.ins('😀'); A.repl(2, '😁'); });
++  C('이모지', '결합 이모지 👍🏽 지우기', (A) { A.ins('a'); A.ins('👍🏽'); A.bs(4); });
++
++  C('괄호', '자동 짝 ( → () → (a) → ) 덮어씀', (A) { A.pair('()'); A.ins('a'); A.overtype(); A.ins('b'); }, want: () => R0 + '(a)b');
++  C('괄호', '따로 들어온 ( ) 사이에 a', (A) { A.ins('('); A.ins(')'); A.caretTo(1); A.ins('a'); });
++  C('괄호', '자동 짝 따옴표 ""', (A) { A.ins('x'); A.pair('""'); A.ins('y'); A.overtype(); }, want: () => R0 + 'x"y"');
++  C('괄호', '자동 짝 《》 + 한글', (A) { A.ins('x'); A.pair('《》'); W(A, ['ㅊ', '채', '책']); A.overtype(); }, want: () => R0 + 'x《책》');
++
++  C('다시열기', '안녕 / 자판 닫고 열기 / 하세요', (A) { W(A, ['ㅇ', '아', '안', '안ㄴ', '안녀', '안녕']); A.reopen(); W(A, ['ㅎ', '하', '핫', '하세', '하셍', '하세요']); });
++  // @@CASES-END
++}
++
++// node sim_input.cjs ADDON per case:
++// [VK_BACK, all keys, strings, string chars, key route VK_BACK, onChanged calls]
++const List<List<int>> _nodeCounts = [
++  [10, 21, 1, 2, 0, 12], // 1
++  [20, 39, 2, 6, 0, 21], // 2
++  [3, 7, 0, 0, 0, 4], // 3
++  [3, 7, 0, 0, 0, 4], // 4
++  [3, 7, 0, 0, 0, 4], // 5
++  [5, 11, 0, 0, 0, 6], // 6
++  [6, 12, 1, 2, 0, 7], // 7
++  [8, 15, 2, 4, 0, 9], // 8
++  [4, 9, 0, 0, 0, 5], // 9
++  [5, 10, 1, 2, 0, 6], // 10
++  [20, 40, 2, 6, 0, 22], // 11
++  [6, 13, 0, 0, 0, 7], // 12
++  [3, 6, 0, 0, 0, 4], // 13
++  [6, 13, 1, 2, 0, 8], // 14
++  [4, 8, 1, 2, 0, 5], // 15
++  [4, 10, 0, 0, 0, 6], // 16
++  [4, 8, 1, 2, 0, 5], // 17
++  [4, 10, 0, 0, 0, 6], // 18
++  [3, 7, 0, 0, 0, 4], // 19
++  [6, 13, 0, 0, 0, 9], // 20
++  [0, 3, 0, 0, 0, 3], // 21
++  [13, 16, 5, 13, 0, 15], // 22
++  [2, 6, 0, 0, 0, 4], // 23
++  [2, 10, 0, 0, 0, 8], // 24
++  [1, 7, 0, 0, 0, 6], // 25
++  [0, 3, 0, 0, 0, 3], // 26
++  [2, 5, 0, 0, 0, 5], // 27
++  [2, 11, 0, 0, 0, 9], // 28
++  [0, 4, 0, 0, 0, 4], // 29
++  [0, 13, 0, 0, 0, 13], // 30
++  [5, 14, 0, 0, 0, 9], // 31
++  [2, 5, 1, 3, 0, 4], // 32
++  [7, 17, 1, 7, 0, 11], // 33
++  [2, 8, 0, 0, 0, 6], // 34
++  [1, 5, 1, 2, 0, 5], // 35
++  [5, 12, 1, 4, 0, 8], // 36
++  [0, 3, 1, 3, 0, 4], // 37
++  [211, 211, 2, 422, 0, 2], // 38
++  [1, 4, 0, 0, 0, 3], // 39
++  [0, 0, 1, 3, 0, 1], // 40
++  [0, 0, 1, 2000, 0, 1], // 41
++  [1, 3, 1, 5, 0, 3], // 42
++  [0, 0, 2, 6, 0, 2], // 43
++  [2, 5, 1, 3, 0, 4], // 44
++  [5, 7, 3, 6, 0, 5], // 45
++  [422, 422, 3, 635, 0, 3], // 46
++  [3, 3, 2, 6, 0, 2], // 47
++  [0, 6, 0, 0, 0, 4], // 48
++  [3, 3, 0, 0, 0, 3], // 49
++  [1030, 1030, 0, 0, 6, 1024], // 50
++  [1025, 1028, 0, 0, 0, 1027], // 51
++  [1024, 1027, 0, 0, 0, 1027], // 52
++  [5, 16, 0, 0, 0, 12], // 53
++  [20, 20, 1, 26, 0, 21], // 54
++  [0, 1, 1, 2, 0, 2], // 55
++  [1, 2, 1, 2, 0, 3], // 56
++  [1, 1, 2, 4, 0, 2], // 57
++  [2, 3, 1, 4, 0, 3], // 58
++  [1, 2, 2, 4, 0, 3], // 59
++  [1, 3, 1, 2, 0, 3], // 60
++  [1, 2, 2, 4, 0, 3], // 61
++  [5, 6, 4, 8, 0, 5], // 62
++  [9, 19, 2, 4, 0, 12], // 63
++];
++
++void main() {
++  _defineCases();
++
++  test('63 cases, same as sim_input.cjs', () {
++    expect(_cases.length, 63);
++    expect(_nodeCounts.length, 63);
++  });
++
++  group('OAMap 0001 Hangul input (oamapSoftKeyboardDiff)', () {
++    for (var i = 0; i < _cases.length; i++) {
++      final c = _cases[i];
++      final counts = i < _nodeCounts.length ? _nodeCounts[i] : const <int>[];
++      test('${i + 1} ${c.group} ${c.name}', () {
++        final A = Ime(c.r0 ?? R0);
++        c.ops(A);
++        final want = c.want != null ? c.want!() : A.base + A.user;
++        final known = c.known;
++        if (known != null) {
++          // known limitation (only after all 1024 seed characters are gone)
++          expect(A.remote.text, isNot(want));
++          expect(A.remote.text, known);
++        } else {
++          expect(A.remote.text, want);
++        }
++        expect(<int>[
++          A.remote.back,
++          A.remote.keys,
++          A.remote.strings,
++          A.remote.strChars,
++          A.keyRoute,
++          A.changes,
++        ], counts);
++      });
++    }
++  });
++}

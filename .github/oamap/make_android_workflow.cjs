@@ -49,6 +49,25 @@ a = a.replace(checkout, (m, step, next) => step +
   '          OAMAP_PUB_KEY: ${{ secrets.OAMAP_PUB_KEY }}\n' +
   '        run: python3 .github/oamap/set_server_defaults.py libs/hbb_common/src/config.rs\n' + next);
 
+// after Flutter is installed (and patched): the real Dart test of the 0001
+// Hangul input diff, 63 cases; a failure stops the build.
+const flutterStep = /(\n      - name: Patch flutter\n(?:        .*\n)+?)(\n      - )/.test(a)
+  ? /(\n      - name: Patch flutter\n(?:        .*\n)+?)(\n      - )/
+  : /(\n      - name: Install flutter\n(?:        .*\n)+?)(\n      - )/;
+if (!flutterStep.test(a)) fail('Install flutter step not found');
+a = a.replace(flutterStep, (m, step, next) => step +
+  '\n      - name: OAMap Hangul input test (real Dart, 63 cases)\n' +
+  '        working-directory: flutter\n' +
+  '        shell: bash\n' +
+  '        run: |\n' +
+  '          set +e\n' +
+  '          flutter test test/oamap_input_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
+  '          rc=${PIPESTATUS[0]}\n' +
+  '          last=$(grep -E "^[0-9:]+ \\+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)\n' +
+  '          if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi\n' +
+  '          echo "OAMap Hangul input test (real Dart, 63 cases): $res - $last" >> "$GITHUB_STEP_SUMMARY"\n' +
+  '          exit "$rc"\n' + next);
+
 // dart-define flags through env (no ${{ }} inside the script)
 if (!/--split-per-abi/.test(a)) fail('flutter build apk line not found');
 a = a.replace(/--split-per-abi/g, '--split-per-abi $OAMAP_DART_DEFINES');
