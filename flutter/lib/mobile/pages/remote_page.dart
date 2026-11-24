@@ -1105,6 +1105,12 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
           color: Color(0xAA000000),
           padding: EdgeInsets.only(top: 24, bottom: 4, left: 4, right: 4),
           child: oamapCompactKeyRow(
+            copy: wrap(isMac ? 'Cmd+C' : 'Ctrl+C', () {
+              sendPrompt(isMac, 'VK_C');
+            }),
+            paste: wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
+              sendPrompt(isMac, 'VK_V');
+            }),
             ctrl: wrap('Ctrl ', () {
               setState(() => inputModel.ctrl = !inputModel.ctrl);
             }, active: inputModel.ctrl),
