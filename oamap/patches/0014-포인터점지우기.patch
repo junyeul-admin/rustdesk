@@ -226,3 +226,149 @@ index 0000000..953d7ea
 +    expect(alphaAt(out, 8, 5, 3), 255);
 +  });
 +}
+diff --git a/flutter/lib/oamap/oamap_cursor.dart b/flutter/lib/oamap/oamap_cursor.dart
+index e84081f..59c094d 100644
+--- a/flutter/lib/oamap/oamap_cursor.dart
++++ b/flutter/lib/oamap/oamap_cursor.dart
+@@ -15,6 +15,7 @@ import 'dart:ui' as ui;
+ import 'package:flutter/material.dart';
+ 
+ import '../models/platform_model.dart';
++import 'oamap_cursor_clean.dart';
+ 
+ const bool kOamapCursorPlus =
+     bool.fromEnvironment('OAMAP_CURSOR_PLUS', defaultValue: true);
+@@ -106,8 +107,6 @@ class OamapCursorPainter extends CustomPainter {
+ // alpha < 24 dropped, then only connected parts at least 25 % the size of the
+ // biggest part are kept. Until the cleaned copy is ready (one frame) the
+ // original is drawn. Cleaning never moves the hotspot (same size picture).
+-const int _kCleanAlpha = 24;
+-const double _kCleanKeep = 0.25;
+ 
+ final ValueNotifier<int> oamapCursorTick = ValueNotifier<int>(0);
+ final Map<ui.Image, ui.Image> _oamapClean = <ui.Image, ui.Image>{};
+@@ -132,52 +131,6 @@ ui.Image oamapCleanCursor(ui.Image img) {
+   return img;
+ }
+ 
+-/// Pure part (tested): rgba bytes of a w x h picture -> cleaned copy.
+-Uint8List oamapCleanRgba(Uint8List rgba, int w, int h) {
+-  final n = w * h;
+-  final label = Int32List(n);
+-  final sizes = <int>[0];
+-  final stack = <int>[];
+-  for (var i = 0; i < n; i++) {
+-    if (label[i] != 0 || rgba[i * 4 + 3] < _kCleanAlpha) continue;
+-    final id = sizes.length;
+-    var size = 0;
+-    label[i] = id;
+-    stack.add(i);
+-    while (stack.isNotEmpty) {
+-      final p = stack.removeLast();
+-      size++;
+-      final px = p % w, py = p ~/ w;
+-      for (var dy = -1; dy <= 1; dy++) {
+-        for (var dx = -1; dx <= 1; dx++) {
+-          final nx = px + dx, ny = py + dy;
+-          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+-          final q = ny * w + nx;
+-          if (label[q] != 0 || rgba[q * 4 + 3] < _kCleanAlpha) continue;
+-          label[q] = id;
+-          stack.add(q);
+-        }
+-      }
+-    }
+-    sizes.add(size);
+-  }
+-  var biggest = 0;
+-  for (final s in sizes) {
+-    if (s > biggest) biggest = s;
+-  }
+-  final out = Uint8List.fromList(rgba);
+-  for (var i = 0; i < n; i++) {
+-    final l = label[i];
+-    if (l == 0 || sizes[l] < biggest * _kCleanKeep) {
+-      out[i * 4] = 0;
+-      out[i * 4 + 1] = 0;
+-      out[i * 4 + 2] = 0;
+-      out[i * 4 + 3] = 0;
+-    }
+-  }
+-  return out;
+-}
+-
+ Future<ui.Image> _oamapMakeClean(ui.Image img) async {
+   final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+   if (bd == null) return img;
+diff --git a/flutter/lib/oamap/oamap_cursor_clean.dart b/flutter/lib/oamap/oamap_cursor_clean.dart
+new file mode 100644
+index 0000000..be00776
+--- /dev/null
++++ b/flutter/lib/oamap/oamap_cursor_clean.dart
+@@ -0,0 +1,54 @@
++// OAMap add-on 0014 (pure part, no app imports so the Dart test can run
++// before the Rust bridge is generated): drop faint pixels (alpha < 24) and
++// parts smaller than 25 % of the biggest connected part of a pointer picture.
++import 'dart:typed_data';
++
++const int _kCleanAlpha = 24;
++const double _kCleanKeep = 0.25;
++
++/// Pure part (tested): rgba bytes of a w x h picture -> cleaned copy.
++Uint8List oamapCleanRgba(Uint8List rgba, int w, int h) {
++  final n = w * h;
++  final label = Int32List(n);
++  final sizes = <int>[0];
++  final stack = <int>[];
++  for (var i = 0; i < n; i++) {
++    if (label[i] != 0 || rgba[i * 4 + 3] < _kCleanAlpha) continue;
++    final id = sizes.length;
++    var size = 0;
++    label[i] = id;
++    stack.add(i);
++    while (stack.isNotEmpty) {
++      final p = stack.removeLast();
++      size++;
++      final px = p % w, py = p ~/ w;
++      for (var dy = -1; dy <= 1; dy++) {
++        for (var dx = -1; dx <= 1; dx++) {
++          final nx = px + dx, ny = py + dy;
++          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
++          final q = ny * w + nx;
++          if (label[q] != 0 || rgba[q * 4 + 3] < _kCleanAlpha) continue;
++          label[q] = id;
++          stack.add(q);
++        }
++      }
++    }
++    sizes.add(size);
++  }
++  var biggest = 0;
++  for (final s in sizes) {
++    if (s > biggest) biggest = s;
++  }
++  final out = Uint8List.fromList(rgba);
++  for (var i = 0; i < n; i++) {
++    final l = label[i];
++    if (l == 0 || sizes[l] < biggest * _kCleanKeep) {
++      out[i * 4] = 0;
++      out[i * 4 + 1] = 0;
++      out[i * 4 + 2] = 0;
++      out[i * 4 + 3] = 0;
++    }
++  }
++  return out;
++}
++
+diff --git a/flutter/test/oamap_cursor_test.dart b/flutter/test/oamap_cursor_test.dart
+index 953d7ea..a40cc4d 100644
+--- a/flutter/test/oamap_cursor_test.dart
++++ b/flutter/test/oamap_cursor_test.dart
+@@ -1,6 +1,6 @@
+ // OAMap add-on 0014 test: stray specks removed from the pointer picture.
+ import 'dart:typed_data';
+-import 'package:flutter_hbb/oamap/oamap_cursor.dart';
++import 'package:flutter_hbb/oamap/oamap_cursor_clean.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ 
+ Uint8List pic(int w, int h, List<List<int>> on) {
