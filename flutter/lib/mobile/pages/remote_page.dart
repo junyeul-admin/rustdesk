@@ -1395,15 +1395,23 @@ class CursorPaint extends StatelessWidget {
     final adjust = c.getAdjustY();
     if (kOamapCursorPlus) {
       // OAMap 0011: bigger pointer with a yellow outline
-      return CustomPaint(
-        painter: OamapCursorPainter(
-            image: image,
-            x: (m.x - hotx) * factor + c.x / s2,
-            y: (m.y - hoty) * factor + (c.y + adjust) / s2,
-            scale: s2,
-            hotx: hotx,
-            hoty: hoty,
-            k: oamapCursorScale),
+      // OAMap 0014: stray specks of the pointer picture removed first
+      final img = image;
+      final px = (m.x - hotx) * factor + c.x / s2;
+      final py = (m.y - hoty) * factor + (c.y + adjust) / s2;
+      final hx = hotx, hy = hoty;
+      return ValueListenableBuilder<int>(
+        valueListenable: oamapCursorTick,
+        builder: (_, __, ___) => CustomPaint(
+          painter: OamapCursorPainter(
+              image: oamapCleanCursor(img),
+              x: px,
+              y: py,
+              scale: s2,
+              hotx: hx,
+              hoty: hy,
+              k: oamapCursorScale),
+        ),
       );
     }
     return CustomPaint(
