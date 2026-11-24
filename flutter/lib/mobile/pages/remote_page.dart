@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_pan.dart'; // OAMap 0005
 import '../../oamap/oamap_view.dart'; // OAMap 0004
 import '../../oamap/oamap_session.dart'; // OAMap 0003
 import '../../oamap/oamap_keys.dart'; // OAMap 0002
@@ -585,7 +586,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                         : SafeArea(
                             child:
                                 OrientationBuilder(builder: (ctx, orientation) {
-                              if (_currentOrientation != orientation) {
+                              if (_currentOrientation != orientation &&
+                                  oamapIsRealRotation(ctx, orientation)) {
+                                // OAMap 0005: real rotations only
                                 Timer(const Duration(milliseconds: 200), () {
                                   gFFI.dialogManager
                                       .resetMobileActionsOverlay(ffi: gFFI);

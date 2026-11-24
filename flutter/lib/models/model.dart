@@ -44,6 +44,7 @@ import '../common/widgets/dialog.dart';
 import 'input_model.dart';
 import 'platform_model.dart';
 import 'package:flutter_hbb/utils/scale.dart';
+import 'package:flutter_hbb/oamap/oamap_pan.dart'; // OAMap 0005
 
 import 'package:flutter_hbb/generated_bridge.dart'
     if (dart.library.html) 'package:flutter_hbb/web/bridge.dart';
@@ -3371,8 +3372,8 @@ class CursorModel with ChangeNotifier {
     dx /= scale;
     dy /= scale;
     final r = getVisibleRect();
-    var cx = r.center.dx;
-    var cy = r.center.dy;
+    var cx = oamapPanEdgeX(r, dx); // OAMap 0005: was r.center.dx
+    var cy = oamapPanEdgeY(r, dy); // OAMap 0005: was r.center.dy
     var tryMoveCanvasX = false;
     final displayRect = parent.target?.ffiModel.rect;
     if (dx > 0) {
