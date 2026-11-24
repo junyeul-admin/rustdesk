@@ -13,6 +13,7 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 const bool kOamapHangulInput =
     bool.fromEnvironment('OAMAP_HANGUL_INPUT', defaultValue: true);
@@ -146,4 +147,38 @@ class OamapComposeSender {
     _sent = target;
     send(old, target);
   }
+}
+
+// OAMap add-on 0013: character key events from the soft keyboard stay local.
+//
+// Field report (with 0012 on): Samsung Cheonjiin "안녕하세요" still arrived as
+// "안녕하8요". The phone's own suggestion strip showed "안녕하세요", so the
+// text was right; the "8" came from a hardware-style key event the keyboard
+// also sends for its ㅅㅎ key (labelled 8). Upstream's RawKeyFocusScope above
+// the hidden field forwards key events to the peer as physical keys, so the
+// peer got "8" and the composition step was lost.
+// The hidden field is wrapped in Focus(onKeyEvent: oamapSoftKeyFilter):
+// events that carry a printable character (or are the matching key up /
+// repeat of a printable key) skip the remaining handlers, i.e. they are not
+// forwarded to the peer and go back to the platform / IME, whose text reaches
+// the peer through the text path (0001 / 0012). Enter, Backspace, arrows and
+// other special keys are untouched.
+// Turn off: --dart-define=OAMAP_SOFT_KEY_FILTER=false
+const bool kOamapSoftKeyFilter =
+    bool.fromEnvironment('OAMAP_SOFT_KEY_FILTER', defaultValue: true);
+
+bool oamapPrintable(String? s) {
+  if (s == null || s.isEmpty) return false;
+  final r = s.runes.first;
+  return r >= 0x20 && r != 0x7f;
+}
+
+KeyEventResult oamapSoftKeyFilter(FocusNode node, KeyEvent e) {
+  if (!kOamapSoftKeyFilter) return KeyEventResult.ignored;
+  if (oamapPrintable(e.character)) return KeyEventResult.skipRemainingHandlers;
+  final label = e.logicalKey.keyLabel;
+  if (label.runes.length == 1 && oamapPrintable(label)) {
+    return KeyEventResult.skipRemainingHandlers;
+  }
+  return KeyEventResult.ignored;
 }

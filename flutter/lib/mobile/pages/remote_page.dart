@@ -774,7 +774,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               height: 0,
               child: !_showEdit
                   ? Container()
-                  : TextFormField(
+                  : Focus(
+                      // OAMap 0013: printable key events stay local (oamap_input.dart)
+                      canRequestFocus: false,
+                      skipTraversal: true,
+                      onKeyEvent: oamapSoftKeyFilter,
+                      child: TextFormField(
                       textInputAction: TextInputAction.newline,
                       autocorrect: false,
                       enableIMEPersonalizedLearning: !kOamapImeNoLearning, // OAMap 0001
@@ -799,6 +804,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                       //                     and the event will not popup if `KeyEventResult.handled` is returned.
                       onChanged: handleSoftKeyboardInput,
                     ).workaroundFreezeLinuxMint(),
+                    ), // OAMap 0013 Focus
             ),
           ];
           if (showCursorPaint) {
