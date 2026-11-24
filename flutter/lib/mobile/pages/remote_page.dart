@@ -158,6 +158,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
+      oamapMuteOnStart(gFFI); // OAMap 0015: sound off by default
       gFFI.recordingModel
           .updateStatus(bind.sessionGetIsRecording(sessionId: gFFI.sessionId));
       if (gFFI.recordingModel.start) {
@@ -1132,6 +1133,15 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
               wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
                 sendPrompt(isMac, 'VK_V');
               }),
+              // OAMap 0015: sound on / off for this session
+              wrap('', () async {
+                await oamapToggleMute(gFFI);
+                if (mounted) setState(() {});
+              },
+                  active: !oamapMuted(gFFI),
+                  icon: oamapMuted(gFFI)
+                      ? Icons.volume_off
+                      : Icons.volume_up),
               wrap(isMac ? 'Cmd+F' : 'Ctrl+F', () {
                 sendPrompt(isMac, 'VK_F');
               }),

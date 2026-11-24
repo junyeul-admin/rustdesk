@@ -17,6 +17,8 @@
 import 'package:flutter/widgets.dart';
 
 import '../models/input_model.dart';
+import '../models/model.dart';
+import '../models/platform_model.dart';
 
 const bool kOamapImeKeys =
     bool.fromEnvironment('OAMAP_IME_KEYS', defaultValue: true);
@@ -71,3 +73,26 @@ Widget oamapCompactKeyRow({
     ],
   );
 }
+
+// OAMap add-on 0015: sound from the remote PC is off by default.
+// Owner: remote work is often done in quiet places. When a session shows its
+// first picture the session is muted (upstream option 'disable-audio', the
+// same switch as the toolbar's Mute). The one-row key bar gets a speaker
+// button to turn it on / off for this session.
+// Turn off: --dart-define=OAMAP_MUTE_DEFAULT=false
+const bool kOamapMuteDefault =
+    bool.fromEnvironment('OAMAP_MUTE_DEFAULT', defaultValue: true);
+const String _kAudioOpt = 'disable-audio';
+
+bool oamapMuted(FFI ffi) =>
+    bind.sessionGetToggleOptionSync(sessionId: ffi.sessionId, arg: _kAudioOpt);
+
+Future<void> oamapMuteOnStart(FFI ffi) async {
+  if (!kOamapMuteDefault) return;
+  if (!oamapMuted(ffi)) {
+    await bind.sessionToggleOption(sessionId: ffi.sessionId, value: _kAudioOpt);
+  }
+}
+
+Future<void> oamapToggleMute(FFI ffi) =>
+    bind.sessionToggleOption(sessionId: ffi.sessionId, value: _kAudioOpt);

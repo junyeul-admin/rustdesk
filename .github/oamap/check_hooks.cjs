@@ -8,6 +8,7 @@ const need = [
   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.flush(); // OAMap 0012'],
   ['0013', 'flutter/lib/mobile/pages/remote_page.dart', 'onKeyEvent: oamapSoftKeyFilter,'],
   ['0014', 'flutter/lib/mobile/pages/remote_page.dart', 'image: oamapCleanCursor(img),'],
+  ['0015', 'flutter/lib/mobile/pages/remote_page.dart', 'oamapMuteOnStart(gFFI);'],
   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'enableIMEPersonalizedLearning: !kOamapImeNoLearning,'],
   ['0002', 'flutter/lib/mobile/pages/remote_page.dart', '...oamapImeKeys(wrap, inputModel, isMac),'],
   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.open();'],
