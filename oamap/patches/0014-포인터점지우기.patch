@@ -1,0 +1,228 @@
+diff --git a/.github/oamap/check_hooks.cjs b/.github/oamap/check_hooks.cjs
+index 9b15c0f..89196b7 100644
+--- a/.github/oamap/check_hooks.cjs
++++ b/.github/oamap/check_hooks.cjs
+@@ -7,6 +7,7 @@ const need = [
+   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.handle(_textController.value, newValue, oamapCommitOnly,'],
+   ['0012', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapCompose.flush(); // OAMap 0012'],
+   ['0013', 'flutter/lib/mobile/pages/remote_page.dart', 'onKeyEvent: oamapSoftKeyFilter,'],
++  ['0014', 'flutter/lib/mobile/pages/remote_page.dart', 'image: oamapCleanCursor(img),'],
+   ['0001', 'flutter/lib/mobile/pages/remote_page.dart', 'enableIMEPersonalizedLearning: !kOamapImeNoLearning,'],
+   ['0002', 'flutter/lib/mobile/pages/remote_page.dart', '...oamapImeKeys(wrap, inputModel, isMac),'],
+   ['0003', 'flutter/lib/mobile/pages/remote_page.dart', '_oamapKeeper.open();'],
+diff --git a/.github/oamap/make_android_workflow.cjs b/.github/oamap/make_android_workflow.cjs
+index adc7e6d..384466e 100644
+--- a/.github/oamap/make_android_workflow.cjs
++++ b/.github/oamap/make_android_workflow.cjs
+@@ -61,7 +61,7 @@ a = a.replace(flutterStep, (m, step, next) => step +
+   '        shell: bash\n' +
+   '        run: |\n' +
+   '          set +e\n' +
+-  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
++  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
+   '          rc=${PIPESTATUS[0]}\n' +
+   '          last=$(grep -E "^[0-9:]+ \\+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)\n' +
+   '          if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi\n' +
+diff --git a/.github/workflows/oamap-android.yml b/.github/workflows/oamap-android.yml
+index b02cb0f..dfcc95d 100644
+--- a/.github/workflows/oamap-android.yml
++++ b/.github/workflows/oamap-android.yml
+@@ -161,7 +161,7 @@ jobs:
+         shell: bash
+         run: |
+           set +e
+-          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
++          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
+           rc=${PIPESTATUS[0]}
+           last=$(grep -E "^[0-9:]+ \+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)
+           if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index 0492963..96eb864 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -1395,15 +1395,23 @@ class CursorPaint extends StatelessWidget {
+     final adjust = c.getAdjustY();
+     if (kOamapCursorPlus) {
+       // OAMap 0011: bigger pointer with a yellow outline
+-      return CustomPaint(
+-        painter: OamapCursorPainter(
+-            image: image,
+-            x: (m.x - hotx) * factor + c.x / s2,
+-            y: (m.y - hoty) * factor + (c.y + adjust) / s2,
+-            scale: s2,
+-            hotx: hotx,
+-            hoty: hoty,
+-            k: oamapCursorScale),
++      // OAMap 0014: stray specks of the pointer picture removed first
++      final img = image;
++      final px = (m.x - hotx) * factor + c.x / s2;
++      final py = (m.y - hoty) * factor + (c.y + adjust) / s2;
++      final hx = hotx, hy = hoty;
++      return ValueListenableBuilder<int>(
++        valueListenable: oamapCursorTick,
++        builder: (_, __, ___) => CustomPaint(
++          painter: OamapCursorPainter(
++              image: oamapCleanCursor(img),
++              x: px,
++              y: py,
++              scale: s2,
++              hotx: hx,
++              hoty: hy,
++              k: oamapCursorScale),
++        ),
+       );
+     }
+     return CustomPaint(
+diff --git a/flutter/lib/oamap/oamap_cursor.dart b/flutter/lib/oamap/oamap_cursor.dart
+index ffa39bf..e84081f 100644
+--- a/flutter/lib/oamap/oamap_cursor.dart
++++ b/flutter/lib/oamap/oamap_cursor.dart
+@@ -8,6 +8,8 @@
+ // Settings > OAMap: pointer size 1x / 1.5x / 2x (default 1.5x).
+ // Turn off at build time: --dart-define=OAMAP_CURSOR_PLUS=false
+ 
++import 'dart:async';
++import 'dart:typed_data';
+ import 'dart:ui' as ui;
+ 
+ import 'package:flutter/material.dart';
+@@ -94,3 +96,94 @@ class OamapCursorPainter extends CustomPainter {
+       old.hoty != hoty ||
+       old.k != k;
+ }
++
++// OAMap add-on 0014: only the pointer itself, no stray specks.
++//
++// Field report: with the yellow outline, the text pointer (I-beam) showed two
++// small "0" shapes beside it. They are faint / white specks inside the
++// pointer picture the PC sends (invisible on white before); the outline made
++// them stand out. The picture is cleaned once per pointer shape: pixels with
++// alpha < 24 dropped, then only connected parts at least 25 % the size of the
++// biggest part are kept. Until the cleaned copy is ready (one frame) the
++// original is drawn. Cleaning never moves the hotspot (same size picture).
++const int _kCleanAlpha = 24;
++const double _kCleanKeep = 0.25;
++
++final ValueNotifier<int> oamapCursorTick = ValueNotifier<int>(0);
++final Map<ui.Image, ui.Image> _oamapClean = <ui.Image, ui.Image>{};
++final Set<ui.Image> _oamapCleanBusy = <ui.Image>{};
++
++ui.Image oamapCleanCursor(ui.Image img) {
++  final done = _oamapClean[img];
++  if (done != null) return done;
++  if (_oamapCleanBusy.add(img)) {
++    _oamapMakeClean(img).then((r) {
++      _oamapClean[img] = r;
++    }, onError: (_) {
++      _oamapClean[img] = img;
++    }).whenComplete(() {
++      _oamapCleanBusy.remove(img);
++      while (_oamapClean.length > 24) {
++        _oamapClean.remove(_oamapClean.keys.first);
++      }
++      oamapCursorTick.value++;
++    });
++  }
++  return img;
++}
++
++/// Pure part (tested): rgba bytes of a w x h picture -> cleaned copy.
++Uint8List oamapCleanRgba(Uint8List rgba, int w, int h) {
++  final n = w * h;
++  final label = Int32List(n);
++  final sizes = <int>[0];
++  final stack = <int>[];
++  for (var i = 0; i < n; i++) {
++    if (label[i] != 0 || rgba[i * 4 + 3] < _kCleanAlpha) continue;
++    final id = sizes.length;
++    var size = 0;
++    label[i] = id;
++    stack.add(i);
++    while (stack.isNotEmpty) {
++      final p = stack.removeLast();
++      size++;
++      final px = p % w, py = p ~/ w;
++      for (var dy = -1; dy <= 1; dy++) {
++        for (var dx = -1; dx <= 1; dx++) {
++          final nx = px + dx, ny = py + dy;
++          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
++          final q = ny * w + nx;
++          if (label[q] != 0 || rgba[q * 4 + 3] < _kCleanAlpha) continue;
++          label[q] = id;
++          stack.add(q);
++        }
++      }
++    }
++    sizes.add(size);
++  }
++  var biggest = 0;
++  for (final s in sizes) {
++    if (s > biggest) biggest = s;
++  }
++  final out = Uint8List.fromList(rgba);
++  for (var i = 0; i < n; i++) {
++    final l = label[i];
++    if (l == 0 || sizes[l] < biggest * _kCleanKeep) {
++      out[i * 4] = 0;
++      out[i * 4 + 1] = 0;
++      out[i * 4 + 2] = 0;
++      out[i * 4 + 3] = 0;
++    }
++  }
++  return out;
++}
++
++Future<ui.Image> _oamapMakeClean(ui.Image img) async {
++  final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
++  if (bd == null) return img;
++  final w = img.width, h = img.height;
++  final out = oamapCleanRgba(bd.buffer.asUint8List(), w, h);
++  final c = Completer<ui.Image>();
++  ui.decodeImageFromPixels(out, w, h, ui.PixelFormat.rgba8888, c.complete);
++  return c.future;
++}
+diff --git a/flutter/test/oamap_cursor_test.dart b/flutter/test/oamap_cursor_test.dart
+new file mode 100644
+index 0000000..953d7ea
+--- /dev/null
++++ b/flutter/test/oamap_cursor_test.dart
+@@ -0,0 +1,39 @@
++// OAMap add-on 0014 test: stray specks removed from the pointer picture.
++import 'dart:typed_data';
++import 'package:flutter_hbb/oamap/oamap_cursor.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++Uint8List pic(int w, int h, List<List<int>> on) {
++  final b = Uint8List(w * h * 4);
++  for (final p in on) {
++    final i = (p[1] * w + p[0]) * 4;
++    b[i] = 255; b[i + 1] = 255; b[i + 2] = 255; b[i + 3] = p.length > 2 ? p[2] : 255;
++  }
++  return b;
++}
++int alphaAt(Uint8List b, int w, int x, int y) => b[(y * w + x) * 4 + 3];
++
++void main() {
++  test('I-beam kept, two specks removed', () {
++    final on = <List<int>>[];
++    for (var y = 0; y < 12; y++) { on.add([2, y]); on.add([3, y]); }
++    on.add([8, 2]); on.add([8, 8]);
++    final out = oamapCleanRgba(pic(10, 12, on), 10, 12);
++    expect(alphaAt(out, 10, 2, 5), 255);
++    expect(alphaAt(out, 10, 8, 2), 0);
++    expect(alphaAt(out, 10, 8, 8), 0);
++  });
++  test('faint pixels dropped', () {
++    final on = <List<int>>[[0, 0], [1, 0], [2, 0], [3, 0], [5, 5, 10]];
++    final out = oamapCleanRgba(pic(6, 6, on), 6, 6);
++    expect(alphaAt(out, 6, 5, 5), 0);
++    expect(alphaAt(out, 6, 1, 0), 255);
++  });
++  test('arrow with two big parts keeps both', () {
++    final on = <List<int>>[];
++    for (var i = 0; i < 10; i++) { on.add([0, i]); }
++    for (var i = 0; i < 6; i++) { on.add([5, i]); }
++    final out = oamapCleanRgba(pic(8, 10, on), 8, 10);
++    expect(alphaAt(out, 8, 5, 3), 255);
++  });
++}
