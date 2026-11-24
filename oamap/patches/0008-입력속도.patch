@@ -1,0 +1,212 @@
+diff --git a/flutter/lib/mobile/pages/home_page.dart b/flutter/lib/mobile/pages/home_page.dart
+index fbf8825..a543544 100644
+--- a/flutter/lib/mobile/pages/home_page.dart
++++ b/flutter/lib/mobile/pages/home_page.dart
+@@ -8,6 +8,7 @@ import '../../common/widgets/chat_page.dart';
+ import '../../models/platform_model.dart';
+ import '../../models/state_model.dart';
+ import 'connection_page.dart';
++import '../../oamap/oamap_brand.dart'; // OAMap 0008
+ 
+ abstract class PageShape extends Widget {
+   final String title = "";
+@@ -150,7 +151,7 @@ class HomePageState extends State<HomePage> {
+         ],
+       );
+     }
+-    return Text(bind.mainGetAppNameSync());
++    return Text(oamapAppTitle(bind.mainGetAppNameSync())); // OAMap 0008
+   }
+ }
+ 
+diff --git a/flutter/lib/mobile/pages/remote_page.dart b/flutter/lib/mobile/pages/remote_page.dart
+index bc3abcf..0a5f048 100644
+--- a/flutter/lib/mobile/pages/remote_page.dart
++++ b/flutter/lib/mobile/pages/remote_page.dart
+@@ -25,13 +25,14 @@ import '../../models/shortcut_model.dart';
+ import '../../utils/image.dart';
+ import '../widgets/dialog.dart';
+ import '../widgets/custom_scale_widget.dart';
++import '../../oamap/oamap_typing.dart'; // OAMap 0008
+ import '../../oamap/oamap_pan.dart'; // OAMap 0005
+ import '../../oamap/oamap_view.dart'; // OAMap 0004
+ import '../../oamap/oamap_session.dart'; // OAMap 0003
+ import '../../oamap/oamap_keys.dart'; // OAMap 0002
+ import '../../oamap/oamap_input.dart'; // OAMap 0001
+ 
+-final initText = '1' * 1024;
++String get initText => oamapSeed(); // OAMap 0008 (upstream: '1' * 1024)
+ 
+ // Workaround for Android (default input method, Microsoft SwiftKey keyboard) when using physical keyboard.
+ // When connecting a physical keyboard, `KeyEvent.physicalKey.usbHidUsage` are wrong is using Microsoft SwiftKey keyboard.
+@@ -101,6 +102,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+   final _uniqueKey = UniqueKey();
+   final _oamapKeeper = OamapSessionKeeper(gFFI); // OAMap 0003
+   final _oamapKbCanvas = OamapKeyboardCanvas(gFFI); // OAMap 0004
++  final _oamapTypingFps = OamapTypingFps(gFFI); // OAMap 0008
+   Timer? _iosKeyboardWorkaroundTimer;
+ 
+   final _blockableOverlayState = BlockableOverlayState();
+@@ -302,6 +304,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
+       );
+ 
+   void onSoftKeyboardChanged(bool visible) {
++    _oamapTypingFps.onKeyboard(visible); // OAMap 0008
+     if (!visible) {
+       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
+diff --git a/flutter/lib/mobile/pages/settings_page.dart b/flutter/lib/mobile/pages/settings_page.dart
+index 3ea64b3..e8427b3 100644
+--- a/flutter/lib/mobile/pages/settings_page.dart
++++ b/flutter/lib/mobile/pages/settings_page.dart
+@@ -23,6 +23,7 @@ import '../widgets/dialog.dart';
+ import 'home_page.dart';
+ import 'mobile_keyboard_shortcuts_page.dart';
+ import 'scan_page.dart';
++import '../../oamap/oamap_typing.dart'; // OAMap 0008
+ 
+ class SettingsPage extends StatefulWidget implements PageShape {
+   @override
+@@ -736,6 +737,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
+     final settings = SettingsList(
+       sections: [
+         customClientSection,
++        if (kOamapTypingTune) oamapTypingSettingsSection(() => setState(() {})), // OAMap 0008
+         if (!bind.isDisableAccount())
+           SettingsSection(
+             title: Text(translate('Account')),
+diff --git a/flutter/lib/oamap/oamap_brand.dart b/flutter/lib/oamap/oamap_brand.dart
+index b7b87d1..518577e 100644
+--- a/flutter/lib/oamap/oamap_brand.dart
++++ b/flutter/lib/oamap/oamap_brand.dart
+@@ -9,3 +9,12 @@
+ 
+ const bool kOamapUpdateCheck =
+     bool.fromEnvironment('OAMAP_UPDATE_CHECK', defaultValue: false);
++
++// OAMap 0008: title on the phone home page (upstream shows the app name,
++// "RustDesk"). The internal app name (config folders, protocol) is unchanged.
++// Change at build time: --dart-define=OAMAP_APP_TITLE=...
++const String kOamapAppTitle =
++    String.fromEnvironment('OAMAP_APP_TITLE', defaultValue: 'OAMap 원격');
++
++String oamapAppTitle(String upstream) =>
++    kOamapAppTitle.isEmpty ? upstream : kOamapAppTitle;
+diff --git a/flutter/lib/oamap/oamap_typing.dart b/flutter/lib/oamap/oamap_typing.dart
+new file mode 100644
+index 0000000..91089d8
+--- /dev/null
++++ b/flutter/lib/oamap/oamap_typing.dart
+@@ -0,0 +1,112 @@
++// OAMap add-on 0008: phone keyboard lag while typing Hangul.
++//
++// Field report (Samsung keyboard, Cheonjiin): English typed fast is fine, but
++// Hangul multi-tap (ㄱ x2 = ㅋ, x3 = ㄲ) and long-press (ㄱ held = 4) are
++// misread while connected: the keyboard waits on the app, the app is busy
++// drawing the remote screen, so taps are taken late.
++//
++// Two switches (Settings > OAMap), both read when the keyboard opens:
++//  1. Lower the remote frame rate while the soft keyboard is open
++//     (default on). Temporary only: the per-peer 'custom-fps' setting is put
++//     back right away, and the old rate is sent again when the keyboard closes.
++//  2. Short hidden-field seed: 64 instead of 1024 '1's (default off, for
++//     comparison). The prefix diff (oamap_input.dart) works the same; once
++//     the seed is used up, Backspace on the empty field goes by the key event
++//     route as upstream already does.
++//
++// Turn off at build time: --dart-define=OAMAP_TYPING_TUNE=false
++
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++import 'package:settings_ui/settings_ui.dart';
++
++import '../models/model.dart';
++import '../models/platform_model.dart';
++
++const bool kOamapTypingTune =
++    bool.fromEnvironment('OAMAP_TYPING_TUNE', defaultValue: true);
++
++const String kOamapTypingLowFpsKey = 'oamap-typing-low-fps';
++const String kOamapShortSeedKey = 'oamap-short-seed';
++const int kOamapTypingFps = 10;
++
++bool _oamapOpt(String key, bool def) {
++  final v = bind.mainGetLocalOption(key: key);
++  if (v == 'Y') return true;
++  if (v == 'N') return false;
++  return def;
++}
++
++bool get oamapTypingLowFps =>
++    kOamapTypingTune && _oamapOpt(kOamapTypingLowFpsKey, true);
++bool get oamapShortSeed =>
++    kOamapTypingTune && _oamapOpt(kOamapShortSeedKey, false);
++
++/// Seed of the hidden soft keyboard field (remote_page.dart initText).
++String oamapSeed() => '1' * (oamapShortSeed ? 64 : 1024);
++
++/// remote_page onSoftKeyboardChanged -> lower / restore the frame rate.
++/// Calls are queued so a quick open/close cannot leave the low rate behind.
++class OamapTypingFps {
++  final FFI ffi;
++  bool _low = false;
++  String _saved = '';
++  Future<void> _queue = Future.value();
++
++  OamapTypingFps(this.ffi);
++
++  void onKeyboard(bool open) {
++    _queue = _queue.then((_) => _apply(open)).catchError((e) {
++      debugPrint('OAMap typing fps: $e');
++    });
++  }
++
++  Future<void> _apply(bool open) async {
++    final sid = ffi.sessionId;
++    if (open) {
++      if (_low || !oamapTypingLowFps) return;
++      final saved =
++          await bind.sessionGetOption(sessionId: sid, arg: 'custom-fps') ?? '';
++      final cur = int.tryParse(saved) ?? 30;
++      if (cur <= kOamapTypingFps) return;
++      _saved = saved;
++      _low = true;
++      await bind.sessionSetCustomFps(sessionId: sid, fps: kOamapTypingFps);
++      // sessionSetCustomFps also saves the value for this peer; put it back.
++      await bind.sessionPeerOption(
++          sessionId: sid, name: 'custom-fps', value: _saved);
++    } else {
++      if (!_low) return;
++      _low = false;
++      final cur = int.tryParse(_saved) ?? 30;
++      await bind.sessionSetCustomFps(sessionId: sid, fps: cur);
++      await bind.sessionPeerOption(
++          sessionId: sid, name: 'custom-fps', value: _saved);
++    }
++  }
++}
++
++/// Settings > OAMap: the two switches above.
++AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
++  Future<void> save(String key, bool v) async {
++    await bind.mainSetLocalOption(key: key, value: v ? 'Y' : 'N');
++    refresh();
++  }
++
++  return SettingsSection(
++    title: const Text('OAMap'),
++    tiles: [
++      SettingsTile.switchTile(
++        title: const Text('자판 열면 화면 속도 낮춤(한글 입력 빠르게)'),
++        initialValue: oamapTypingLowFps,
++        onToggle: (v) => save(kOamapTypingLowFpsKey, v),
++      ),
++      SettingsTile.switchTile(
++        title: const Text('숨은 입력칸 짧게(시험)'),
++        initialValue: oamapShortSeed,
++        onToggle: (v) => save(kOamapShortSeedKey, v),
++      ),
++    ],
++  );
++}
