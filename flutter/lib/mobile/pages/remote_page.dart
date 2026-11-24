@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_input.dart'; // OAMap 0001
 
 final initText = '1' * 1024;
 
@@ -373,6 +374,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void _handleNonIOSSoftKeyboardInput(String newValue) {
     var oldValue = _value;
     _value = newValue;
+    if (kOamapHangulInput) {
+      // OAMap 0001: prefix diff for composing IMEs (flutter/lib/oamap/oamap_input.dart)
+      oamapSoftKeyboardDiff(oldValue, newValue,
+          back: () => inputModel.inputKey('VK_BACK'),
+          char: inputChar,
+          string: (s) => bind.sessionInputString(sessionId: sessionId, value: s));
+      return;
+    }
     if (oldValue.isNotEmpty &&
         newValue.isNotEmpty &&
         oldValue[0] == '1' &&
