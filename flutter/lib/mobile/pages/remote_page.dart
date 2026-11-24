@@ -1036,6 +1036,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
   var _pin = false;
   var _oamapCompact = true; // OAMap 0009
   var _oamapKbWas = false; // OAMap 0009
+  var _oamapArrows = false; // OAMap 0009: [⋯] shows the arrow keys
   final _keyboardVisibilityController = KeyboardVisibilityController();
   final _key = GlobalKey();
 
@@ -1094,7 +1095,10 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
     final pi = gFFI.ffiModel.pi;
     final isMac = pi.platform == kPeerPlatformMacOS;
     // OAMap 0009: one short row while the soft keyboard is open
-    if (widget.keyboardIsVisible && !_oamapKbWas) _oamapCompact = true;
+    if (widget.keyboardIsVisible && !_oamapKbWas) {
+      _oamapCompact = true;
+      _oamapArrows = false;
+    }
     _oamapKbWas = widget.keyboardIsVisible;
     if (kOamapCompactBar && _oamapCompact && widget.keyboardIsVisible) {
       Future.delayed(Duration(milliseconds: 500), () {
@@ -1112,35 +1116,35 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
               wrap(isMac ? 'Cmd+V' : 'Ctrl+V', () {
                 sendPrompt(isMac, 'VK_V');
               }),
+              wrap(isMac ? ' Cmd ' : ' Win ', () {
+                setState(() => inputModel.command = !inputModel.command);
+              }, active: inputModel.command),
               wrap('Ctrl ', () {
                 setState(() => inputModel.ctrl = !inputModel.ctrl);
               }, active: inputModel.ctrl),
               wrap(' Alt ', () {
                 setState(() => inputModel.alt = !inputModel.alt);
               }, active: inputModel.alt),
-              wrap(isMac ? ' Cmd ' : ' Win ', () {
-                setState(() => inputModel.command = !inputModel.command);
-              }, active: inputModel.command),
-              wrap('', () {
-                inputModel.inputKey('VK_LEFT');
-              }, icon: Icons.keyboard_arrow_left),
-              wrap('', () {
-                inputModel.inputKey('VK_UP');
-              }, icon: Icons.keyboard_arrow_up),
-              wrap('', () {
-                inputModel.inputKey('VK_DOWN');
-              }, icon: Icons.keyboard_arrow_down),
-              wrap('', () {
-                inputModel.inputKey('VK_RIGHT');
-              }, icon: Icons.keyboard_arrow_right),
             ],
             more: wrap('', () {
-              setState(() {
-                _oamapCompact = false;
-                _more = true;
-                _fn = false;
-              });
-            }, icon: Icons.more_horiz),
+              setState(() => _oamapArrows = !_oamapArrows);
+            }, active: _oamapArrows, icon: Icons.more_horiz),
+            extra: !_oamapArrows
+                ? null
+                : [
+                    wrap('', () {
+                      inputModel.inputKey('VK_LEFT');
+                    }, icon: Icons.keyboard_arrow_left),
+                    wrap('', () {
+                      inputModel.inputKey('VK_UP');
+                    }, icon: Icons.keyboard_arrow_up),
+                    wrap('', () {
+                      inputModel.inputKey('VK_DOWN');
+                    }, icon: Icons.keyboard_arrow_down),
+                    wrap('', () {
+                      inputModel.inputKey('VK_RIGHT');
+                    }, icon: Icons.keyboard_arrow_right),
+                  ],
           ));
     }
     final isWin = pi.platform == kPeerPlatformWindows;

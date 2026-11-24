@@ -8,9 +8,9 @@
 // Turn off at build time: --dart-define=OAMAP_IME_KEYS=false
 //
 // OAMap add-on 0009: while the soft keyboard is open the key bar is one short
-// row - [Ctrl+C] [Ctrl+V] [Ctrl] [Alt] [Win] [←][↑][↓][→] ... [⋯]. [⋯] opens the full upstream bar, its
-// own [...] button comes back to the short row. Each time the keyboard opens
-// the bar starts short again.
+// row - [Ctrl+C] [Ctrl+V] [Win] [Ctrl] [Alt] ... [⋯]. [⋯] shows / hides a
+// second row with the arrow keys. Each time the keyboard opens the bar starts
+// with one row again.
 //
 // Turn off at build time: --dart-define=OAMAP_COMPACT_BAR=false
 
@@ -37,30 +37,37 @@ List<Widget> oamapImeKeys(
   ];
 }
 
-/// The short row: [keys] scroll sideways on a narrow phone, [more] stays at
-/// the end.
+/// The short row: [keys] on the left (scroll sideways on a narrow phone),
+/// [more] at the end; [extra] (arrow keys) as a second row when shown.
 Widget oamapCompactKeyRow({
   required List<Widget> keys,
   required Widget more,
+  List<Widget>? extra,
 }) {
   const gap = SizedBox(width: 4);
-  return Row(
-    children: [
-      Expanded(
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (var i = 0; i < keys.length; i++) ...[
-                if (i > 0) gap,
-                keys[i],
-              ],
+  Widget line(List<Widget> ks) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (var i = 0; i < ks.length; i++) ...[
+              if (i > 0) gap,
+              ks[i],
             ],
-          ),
+          ],
         ),
+      );
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(child: line(keys)),
+          gap,
+          more,
+        ],
       ),
-      gap,
-      more,
+      if (extra != null) ...[const SizedBox(height: 4), line(extra)],
     ],
   );
 }
