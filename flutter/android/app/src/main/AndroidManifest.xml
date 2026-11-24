@@ -102,6 +102,17 @@
             android:name=".FloatingWindowService"
             android:enabled="true" />
 
+        <!-- OAMap 0003: keeps an outgoing remote session alive in the background -->
+        <service
+            android:name=".ClientSessionService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Remote desktop client session" />
+        </service>
+
         <!--
  Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java
