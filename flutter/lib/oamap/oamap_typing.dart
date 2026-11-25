@@ -122,6 +122,22 @@ AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
           initialValue: oamapCjPreview,
           onToggle: (v) => save(kOamapCjPreviewKey, v),
         ),
+      if (kOamapCheonjiin && oamapCjOn)
+        SettingsTile(
+          // 같은 글쇠를 다시 눌러 글자가 바뀌는 시간('ㅅ→ㅎ→ㅆ')
+          //   빠르게 = 재게 눌러야 바뀜(같은 글쇠로 새 글자를 바로 시작하기 쉬움)
+          //   느리게 = 천천히 눌러도 바뀜(새 글자를 시작할 땐 더 쉬어야 함)
+          title: const Text('같은 글쇠 다시 눌러 바꾸는 시간'),
+          value: Text(oamapCjCycleName),
+          onPressed: (context) async {
+            final names = kOamapCjCycles.keys.toList();
+            final i = names.indexOf(oamapCjCycleName);
+            final next = kOamapCjCycles[names[(i + 1) % names.length]]!;
+            await bind.mainSetLocalOption(
+                key: kOamapCjCycleKey, value: next.toString());
+            refresh();
+          },
+        ),
       SettingsTile.switchTile(
         title: const Text('자판 열면 화면 속도 낮춤(한글 입력 빠르게)'),
         initialValue: oamapTypingLowFps,

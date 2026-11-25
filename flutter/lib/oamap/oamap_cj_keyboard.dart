@@ -15,12 +15,14 @@ class OamapCjKeyboard extends StatefulWidget {
   final CjSendCb onSend;          // 원격으로 보낼 거리(지우기 수 · 글자)
   final VoidCallback? onPhoneIme; // [가나다/ABC] — 폰 자판으로 오감
   final bool preview;             // 조합 중 글자를 미리 보여 줄지(설정)
+  final int cycleMs;              // 같은 글쇠를 다시 눌러 글자를 바꾸는 시간(설정)
   final double keyHeight;
   const OamapCjKeyboard({
     super.key,
     required this.onSend,
     this.onPhoneIme,
     this.preview = true,
+    this.cycleMs = cjCycleMs,
     this.keyHeight = 46,
   });
 
@@ -58,7 +60,8 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
 
   void _tap(CjKey k) {
     _stopRepeat();
-    _emit(cjPress(_st, k, nowMs: DateTime.now().millisecondsSinceEpoch));
+    _emit(cjPress(_st, k,
+        nowMs: DateTime.now().millisecondsSinceEpoch, cycleMs: widget.cycleMs));
   }
 
   void _long(CjKey k) {

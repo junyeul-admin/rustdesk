@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 
 import '../models/model.dart';
 import '../models/platform_model.dart';
+import 'oamap_cheonjiin.dart';
 import 'oamap_cj_bridge.dart';
 import 'oamap_cj_keyboard.dart';
 
@@ -19,6 +20,11 @@ const bool kOamapCheonjiin =
 
 const String kOamapCjOnKey = 'oamap-cj-on';
 const String kOamapCjPreviewKey = 'oamap-cj-preview';
+const String kOamapCjCycleKey = 'oamap-cj-cycle';
+
+/// 같은 글쇠를 다시 눌러 글자를 바꿀 수 있는 시간 — 빠르게 / 보통 / 느리게
+///   짧으면 'ㅅㅅ'(ㅎ)을 재게 눌러야 하고, 길면 '안녕'처럼 같은 글쇠로 새 글자를 시작할 때 더 쉬어야 한다.
+const Map<String, int> kOamapCjCycles = {'빠르게': 600, '보통': 900, '느리게': 1300};
 
 bool _yes(String key) => bind.mainGetLocalOption(key: key) != 'N';
 
@@ -28,6 +34,21 @@ bool get oamapCjOn => kOamapCheonjiin && _yes(kOamapCjOnKey);
 /// 조합 중인 글자를 원격 화면에 미리 보여 줄지
 ///   끄면 다 된 글자만 보낸다 — 명령 창처럼 지우기가 어색한 곳에서 쓴다.
 bool get oamapCjPreview => _yes(kOamapCjPreviewKey);
+
+/// 설정에서 고른 '다시 누르기' 시간(밀리초) — 안 골랐으면 보통
+int get oamapCjCycleMs {
+  final v = int.tryParse(bind.mainGetLocalOption(key: kOamapCjCycleKey));
+  return (v != null && kOamapCjCycles.containsValue(v)) ? v : cjCycleMs;
+}
+
+/// 지금 고른 값의 이름('보통' 등)
+String get oamapCjCycleName {
+  final ms = oamapCjCycleMs;
+  for (final e in kOamapCjCycles.entries) {
+    if (e.value == ms) return e.key;
+  }
+  return '보통';
+}
 
 /// 화면 바닥에 붙는 천지인 자판 — 누를 때마다 원격으로 바로 보낸다.
 class OamapCjPanel extends StatelessWidget {
@@ -71,6 +92,7 @@ class OamapCjPanel extends StatelessWidget {
           ),
           OamapCjKeyboard(
             preview: oamapCjPreview,
+            cycleMs: oamapCjCycleMs,
             onPhoneIme: onPhoneIme,
             onSend: (back, text) => oamapCjSendToRemote(
               inputModel: ffi.inputModel,
