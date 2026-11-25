@@ -37,6 +37,8 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
   late final CjEcho _echo = CjEcho(preview: widget.preview);
   CjState _st = CjState();
   Timer? _repeat;        // ⌫ 꾹 누름
+  Timer? _hold;          // 꾹 누르기 재기
+  bool _held = false;    // 이번 누름이 '꾹'으로 끝났는가(그러면 탭은 버린다)
   CjLayer _layer = CjLayer.ko;
   bool _shift = false;   // 영문 대문자
 
@@ -110,8 +112,31 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
     });
   }
 
-  void _long(CjKey k) {
-    if (k == CjKey.back) _startRepeat();
+  // 꾹 누르기 — 안드로이드 기본(0.5초)은 글자를 치다 손가락이 머물면 걸려서
+  //   '안4' 처럼 숫자가 섞였다. 사장님 11/26: 넉넉히 1초.
+  static const int holdMs = 1000;
+
+  void _downKey(VoidCallback? onHold) {
+    _held = false;
+    _hold?.cancel();
+    if (onHold == null) { _hold = null; return; }
+    _hold = Timer(const Duration(milliseconds: holdMs), () {
+      _held = true;
+      onHold();
+    });
+  }
+
+  void _upKey() {
+    _hold?.cancel();
+    _hold = null;
+    _stopRepeat();
+  }
+
+  /// 꾹 눌러 숫자 — 조합 중이던 글자를 굳히고 그 뒤에 숫자를 붙인다
+  void _holdDigit(CjKey k) {
+    final d = cjDigit[k];
+    if (d == null) return;
+    _text(d);
   }
 
   // ⌫ 꾹 누름 — 꾹 누르기가 걸린 그때 한 번, 그 뒤 빠르게 되풀이
@@ -129,8 +154,8 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
   Widget _box({
     required String label,
     required VoidCallback onTap,
-    VoidCallback? onLong,
-    VoidCallback? onLongEnd,
+    VoidCallback? onHold,   // 1초 꾹 눌렀을 때
+    String? digit,          // 오른쪽 위 작은 숫자
     bool fn = false,
     bool on = false,
     int flex = 1,
@@ -140,28 +165,44 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
       flex: flex,
       child: Padding(
         padding: const EdgeInsets.all(3),
-        child: GestureDetector(
-          onTap: onTap,
-          onLongPress: onLong,
-          onLongPressEnd: onLongEnd == null ? null : (_) => onLongEnd(),
-          child: Container(
-            height: widget.keyHeight,
-            decoration: BoxDecoration(
-              color: on
-                  ? const Color(0xFF3478F6)
-                  : (fn
-                      ? (_dark ? const Color(0xFF2C2C2E) : const Color(0xFFD8D8DC))
-                      : (_dark ? const Color(0xFF3A3A3C) : Colors.white)),
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Center(
-              child: Text(label,
-                  style: TextStyle(
-                    fontSize: size,
-                    color: on
-                        ? Colors.white
-                        : (_dark ? Colors.white : const Color(0xFF1C1C1E)),
-                  )),
+        child: Listener(
+          onPointerDown: (_) => _downKey(onHold),
+          onPointerUp: (_) => _upKey(),
+          onPointerCancel: (_) => _upKey(),
+          child: GestureDetector(
+            onTap: () {
+              if (_held) { _held = false; return; }   // 꾹 누름으로 끝난 것은 버린다
+              onTap();
+            },
+            child: Container(
+              height: widget.keyHeight,
+              decoration: BoxDecoration(
+                color: on
+                    ? const Color(0xFF3478F6)
+                    : (fn
+                        ? (_dark ? const Color(0xFF2C2C2E) : const Color(0xFFD8D8DC))
+                        : (_dark ? const Color(0xFF3A3A3C) : Colors.white)),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Stack(children: [
+                Center(
+                  child: Text(label,
+                      style: TextStyle(
+                        fontSize: size,
+                        color: on
+                            ? Colors.white
+                            : (_dark ? Colors.white : const Color(0xFF1C1C1E)),
+                      )),
+                ),
+                if (digit != null)
+                  Positioned(
+                    right: 6,
+                    top: 3,
+                    child: Text(digit,
+                        style: const TextStyle(
+                            fontSize: 10, color: Color(0xFF9A9AA0))),
+                  ),
+              ]),
             ),
           ),
         ),
@@ -169,13 +210,12 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
     );
   }
 
-  // 천지인 글쇠 — 길게 눌러도 숫자가 나오지 않는다(숫자는 [!#1] 판에서)
-  //   살짝 길게 눌린 것만으로 '안4' 처럼 숫자가 섞이던 일을 없앤다.
+  // 천지인 글쇠 — 오른쪽 위에 숫자를 보이고, 1초 꾹 누르면 그 숫자가 들어간다
   Widget _cj(String label, CjKey k, {bool fn = false, int flex = 1}) => _box(
         label: label,
         onTap: () => _tap(k),
-        onLong: k == CjKey.back ? () => _long(k) : null,
-        onLongEnd: k == CjKey.back ? _stopRepeat : null,
+        onHold: cjDigit.containsKey(k) ? () => _holdDigit(k) : null,
+        digit: cjDigit[k],
         fn: fn,
         flex: flex,
         size: fn ? 14 : 17,
@@ -190,8 +230,7 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
   Widget _back() => _box(
         label: '⌫',
         onTap: () => _tap(CjKey.back),
-        onLong: () => _long(CjKey.back),
-        onLongEnd: _stopRepeat,
+        onHold: _startRepeat,
         fn: true,
         size: 14,
       );
@@ -223,7 +262,7 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
           _fn('한/영', () => _go(CjLayer.en), flex: 2),
           _cj('ㅇㅁ', CjKey.om, flex: 3),
           _space(flex: 3),
-          _box(label: ',', onTap: () => _text(','), fn: true, flex: 2, size: 13),
+          _ch('\$', flex: 2),
         ]),
       ];
 
