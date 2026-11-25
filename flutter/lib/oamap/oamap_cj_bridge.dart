@@ -22,3 +22,8 @@ void oamapCjSendToRemote({
     bind.sessionInputString(sessionId: sessionId, value: text);
   }
 }
+
+/// 줄바꿈 — 글자로 '\n' 을 보내면 PC 쪽 프로그램에 따라 줄이 안 바뀐다. 키로 보낸다.
+void oamapCjEnterToRemote({required InputModel inputModel}) {
+  inputModel.inputKey('VK_ENTER');
+}

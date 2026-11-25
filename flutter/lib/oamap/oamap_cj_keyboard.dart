@@ -1,7 +1,7 @@
-// OAMap 천지인 자판 — 앱 안에서 한글을 직접 받는다(삼성·구글 자판을 거치지 않음)
-//   1번 안(사장님 11/25): 한글 치기 + 길게 눌러 숫자 + ⌫ 길게 눌러 연달아 지우기까지.
-//   영문·특수문자·음성은 폰 자판으로 오간다([가나다/ABC] 단추).
-//   보내기는 이 파일이 하지 않는다 — onSend(지우기 수, 글자) 로 넘긴다(시험이 쉽게 돌도록).
+// OAMap 천지인 자판 — 앱 안에서 한글·영문·숫자를 모두 받는다(폰 자판을 거치지 않음)
+//   사장님 11/26: [한/영]·[!#1] 은 폰 자판을 부르지 말고 '이 자판 안에서' 바뀌어야 한다.
+//   그래야 폰 자판이 같이 보내던 숫자 신호('안녕하8요')가 아예 생기지 않는다.
+//   보내기는 이 파일이 하지 않는다 — onSend(지우기 수, 글자) · onEnter() 로 넘긴다(시험이 쉽게 돌도록).
 library;
 
 import 'dart:async';
@@ -11,15 +11,20 @@ import 'oamap_cj_send.dart';
 
 typedef CjSendCb = void Function(int back, String text);
 
+/// 자판의 판 — 한글(천지인) · 영문(쿼티) · 숫자와 기호
+enum CjLayer { ko, en, sym }
+
 class OamapCjKeyboard extends StatefulWidget {
   final CjSendCb onSend;          // 원격으로 보낼 거리(지우기 수 · 글자)
-  final VoidCallback? onPhoneIme; // [가나다/ABC] — 폰 자판으로 오감
+  final VoidCallback? onEnter;    // 줄바꿈은 글자가 아니라 키로 보낸다
+  final VoidCallback? onPhoneIme; // 폰 자판을 부르는 길(이제 숨은 단추로만)
   final bool preview;             // 조합 중 글자를 미리 보여 줄지(설정)
   final int cycleMs;              // 같은 글쇠를 다시 눌러 글자를 바꾸는 시간(설정)
   final double keyHeight;
   const OamapCjKeyboard({
     super.key,
     required this.onSend,
+    this.onEnter,
     this.onPhoneIme,
     this.preview = true,
     this.cycleMs = cjCycleMs,
@@ -33,7 +38,9 @@ class OamapCjKeyboard extends StatefulWidget {
 class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
   late final CjEcho _echo = CjEcho(preview: widget.preview);
   CjState _st = CjState();
-  Timer? _repeat;   // ⌫ 길게 누르기
+  Timer? _repeat;        // ⌫ 꾹 누름
+  CjLayer _layer = CjLayer.ko;
+  bool _shift = false;   // 영문 대문자
 
   @override
   void didUpdateWidget(covariant OamapCjKeyboard old) {
@@ -58,111 +65,219 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
     if (!s.isEmpty) widget.onSend(s.back, s.text);
   }
 
-  void _tap(CjKey k) {
-    _stopRepeat();
+  // 글쇠 한 번 — 되풀이 타이머는 건드리지 않는다(⌫ 꾹 누름이 스스로를 끄지 않게)
+  void _press(CjKey k) {
+    if (k == CjKey.enter) { _pressEnter(); return; }
     _emit(cjPress(_st, k,
         nowMs: DateTime.now().millisecondsSinceEpoch, cycleMs: widget.cycleMs));
   }
 
-  void _long(CjKey k) {
-    if (k == CjKey.back) { _startRepeat(); return; }
-    final o = cjLongPress(_st, k);
-    if (o.handled) _emit(o);
+  void _tap(CjKey k) {
+    _stopRepeat();
+    _press(k);
   }
 
+  // ↵ — 조합 중이던 글자를 먼저 굳혀 보내고, 줄바꿈은 글자가 아니라 키로 보낸다
+  //   (글자로 '\n' 을 보내면 PC 쪽 프로그램에 따라 줄이 안 바뀐다)
+  void _pressEnter() {
+    final o = cjPress(_st, CjKey.enter);
+    final done = o.commit.endsWith('\n')
+        ? o.commit.substring(0, o.commit.length - 1)
+        : o.commit;
+    final s = _echo.step(done, '');
+    setState(() => _st = o.state);
+    if (!s.isEmpty) widget.onSend(s.back, s.text);
+    widget.onEnter?.call();
+  }
+
+  /// 한글이 아닌 글자(영문·숫자·기호) — 조합 중이던 글자를 굳히고 그 뒤에 붙인다
+  void _text(String ch) {
+    _stopRepeat();
+    final s = _echo.step(cjCompose(_st) + ch, '');
+    setState(() => _st = CjState());
+    if (!s.isEmpty) widget.onSend(s.back, s.text);
+  }
+
+  /// 판을 바꾼다 — 조합 중이던 글자는 먼저 굳힌다(판이 바뀌며 글자가 깨지지 않게)
+  void _go(CjLayer to) {
+    _stopRepeat();
+    final done = cjCompose(_st);
+    if (done.isNotEmpty) {
+      final s = _echo.step(done, '');
+      if (!s.isEmpty) widget.onSend(s.back, s.text);
+    }
+    setState(() {
+      _st = CjState();
+      _layer = to;
+      _shift = false;
+    });
+  }
+
+  void _long(CjKey k) {
+    if (k == CjKey.back) _startRepeat();
+  }
+
+  // ⌫ 꾹 누름 — 꾹 누르기가 걸린 그때 한 번, 그 뒤 빠르게 되풀이
   void _startRepeat() {
     _repeat?.cancel();
-    _repeat = Timer.periodic(const Duration(milliseconds: 90), (_) => _tap(CjKey.back));
+    _press(CjKey.back);
+    _repeat = Timer.periodic(
+        const Duration(milliseconds: 90), (_) => _press(CjKey.back));
   }
 
   void _stopRepeat() { _repeat?.cancel(); _repeat = null; }
 
-  Widget _key(String label, CjKey k, {String? digit, bool fn = false, int flex = 1}) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      flex: flex,
-      child: Padding(
-        padding: const EdgeInsets.all(3),
-        child: GestureDetector(
-          onTap: () => _tap(k),
-          onLongPress: () => _long(k),
-          onLongPressEnd: (_) => _stopRepeat(),
-          child: Container(
-            height: widget.keyHeight,
-            decoration: BoxDecoration(
-              color: fn ? (dark ? const Color(0xFF2C2C2E) : const Color(0xFFD8D8DC))
-                        : (dark ? const Color(0xFF3A3A3C) : Colors.white),
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Stack(children: [
-              Center(child: Text(label, style: TextStyle(
-                fontSize: fn ? 14 : 17,
-                color: dark ? Colors.white : const Color(0xFF1C1C1E),
-              ))),
-              if (digit != null) Positioned(right: 5, top: 3, child: Text(digit, style: const TextStyle(fontSize: 9, color: Color(0xFF9A9AA0)))),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
+  bool get _dark => Theme.of(context).brightness == Brightness.dark;
 
-  Widget _plain(String label, VoidCallback onTap, {int flex = 1}) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+  Widget _box({
+    required String label,
+    required VoidCallback onTap,
+    VoidCallback? onLong,
+    VoidCallback? onLongEnd,
+    bool fn = false,
+    bool on = false,
+    int flex = 1,
+    double size = 17,
+  }) {
     return Expanded(
       flex: flex,
       child: Padding(
         padding: const EdgeInsets.all(3),
         child: GestureDetector(
           onTap: onTap,
+          onLongPress: onLong,
+          onLongPressEnd: onLongEnd == null ? null : (_) => onLongEnd(),
           child: Container(
             height: widget.keyHeight,
             decoration: BoxDecoration(
-              color: dark ? const Color(0xFF2C2C2E) : const Color(0xFFD8D8DC),
+              color: on
+                  ? const Color(0xFF3478F6)
+                  : (fn
+                      ? (_dark ? const Color(0xFF2C2C2E) : const Color(0xFFD8D8DC))
+                      : (_dark ? const Color(0xFF3A3A3C) : Colors.white)),
               borderRadius: BorderRadius.circular(7),
             ),
-            child: Center(child: Text(label, style: TextStyle(fontSize: 13, color: dark ? Colors.white : const Color(0xFF1C1C1E)))),
+            child: Center(
+              child: Text(label,
+                  style: TextStyle(
+                    fontSize: size,
+                    color: on
+                        ? Colors.white
+                        : (_dark ? Colors.white : const Color(0xFF1C1C1E)),
+                  )),
+            ),
           ),
         ),
       ),
     );
   }
 
+  // 천지인 글쇠 — 길게 눌러도 숫자가 나오지 않는다(숫자는 [!#1] 판에서)
+  //   살짝 길게 눌린 것만으로 '안4' 처럼 숫자가 섞이던 일을 없앤다.
+  Widget _cj(String label, CjKey k, {bool fn = false, int flex = 1}) => _box(
+        label: label,
+        onTap: () => _tap(k),
+        onLong: k == CjKey.back ? () => _long(k) : null,
+        onLongEnd: k == CjKey.back ? _stopRepeat : null,
+        fn: fn,
+        flex: flex,
+        size: fn ? 14 : 17,
+      );
+
+  Widget _ch(String ch, {int flex = 1, double size = 16}) =>
+      _box(label: ch, onTap: () => _text(ch), flex: flex, size: size);
+
+  Widget _fn(String label, VoidCallback onTap, {int flex = 1, bool on = false}) =>
+      _box(label: label, onTap: onTap, fn: true, on: on, flex: flex, size: 13);
+
+  Widget _back() => _box(
+        label: '⌫',
+        onTap: () => _tap(CjKey.back),
+        onLong: () => _long(CjKey.back),
+        onLongEnd: _stopRepeat,
+        fn: true,
+        size: 14,
+      );
+
+  Widget _enter({int flex = 1}) =>
+      _box(label: '↵', onTap: () => _tap(CjKey.enter), fn: true, flex: flex, size: 14);
+
+  Widget _space({int flex = 3}) => _layer == CjLayer.ko
+      ? _box(label: '␣', onTap: () => _tap(CjKey.space), fn: true, flex: flex, size: 14)
+      : _box(label: '␣', onTap: () => _text(' '), fn: true, flex: flex, size: 14);
+
+  List<Widget> _rowOf(String s) =>
+      s.split('').map((c) => _ch(_shift ? c.toUpperCase() : c)).toList();
+
+  // ── 한글(천지인) — 삼성과 같은 자리
+  List<Widget> _ko() => [
+        Row(children: [
+          _cj('ㅣ', CjKey.ii), _cj('·', CjKey.dot), _cj('ㅡ', CjKey.eu), _back(),
+        ]),
+        Row(children: [
+          _cj('ㄱㅋ', CjKey.gk), _cj('ㄴㄹ', CjKey.nr), _cj('ㄷㅌ', CjKey.dt), _enter(),
+        ]),
+        Row(children: [
+          _cj('ㅂㅍ', CjKey.bp), _cj('ㅅㅎ', CjKey.sh), _cj('ㅈㅊ', CjKey.jc),
+          _box(label: '.,?!', onTap: () => _text('.'), fn: true, size: 13),
+        ]),
+        Row(children: [
+          _fn('!#1', () => _go(CjLayer.sym), flex: 3),
+          _fn('한/영', () => _go(CjLayer.en), flex: 2),
+          _cj('ㅇㅁ', CjKey.om, flex: 3),
+          _space(flex: 3),
+          _box(label: ',', onTap: () => _text(','), fn: true, flex: 2, size: 13),
+        ]),
+      ];
+
+  // ── 영문(쿼티)
+  List<Widget> _en() => [
+        Row(children: _rowOf('qwertyuiop')),
+        Row(children: [
+          const Spacer(flex: 1),
+          ..._rowOf('asdfghjkl').map((w) => w),
+          const Spacer(flex: 1),
+        ]),
+        Row(children: [
+          _fn(_shift ? '⇧' : '⇪', () => setState(() => _shift = !_shift),
+              flex: 2, on: _shift),
+          ..._rowOf('zxcvbnm'),
+          _back(),
+        ]),
+        Row(children: [
+          _fn('!#1', () => _go(CjLayer.sym), flex: 3),
+          _fn('한/영', () => _go(CjLayer.ko), flex: 2),
+          _space(flex: 6),
+          _ch('.', flex: 2),
+          _enter(flex: 2),
+        ]),
+      ];
+
+  // ── 숫자와 기호
+  List<Widget> _sym() => [
+        Row(children: _rowOf('1234567890')),
+        Row(children: _rowOf('-/:;()₩&@')),
+        Row(children: [
+          _ch('.', flex: 2), ..._rowOf(',?!\'"*#%'), _back(),
+        ]),
+        Row(children: [
+          _fn('가나다', () => _go(CjLayer.ko), flex: 3),
+          _fn('ABC', () => _go(CjLayer.en), flex: 2),
+          _space(flex: 6),
+          _ch('+', flex: 2),
+          _enter(flex: 2),
+        ]),
+      ];
+
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final rows = _layer == CjLayer.ko
+        ? _ko()
+        : (_layer == CjLayer.en ? _en() : _sym());
     return Container(
-      color: dark ? const Color(0xFF1C1C1E) : const Color(0xFFE3E3E8),
+      color: _dark ? const Color(0xFF1C1C1E) : const Color(0xFFE3E3E8),
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Row(children: [
-          _key('ㅣ', CjKey.ii, digit: '1'),
-          _key('·', CjKey.dot, digit: '2'),
-          _key('ㅡ', CjKey.eu, digit: '3'),
-          _key('⌫', CjKey.back, fn: true),
-        ]),
-        Row(children: [
-          _key('ㄱㅋ', CjKey.gk, digit: '4'),
-          _key('ㄴㄹ', CjKey.nr, digit: '5'),
-          _key('ㄷㅌ', CjKey.dt, digit: '6'),
-          _key('↵', CjKey.enter, fn: true),
-        ]),
-        Row(children: [
-          _key('ㅂㅍ', CjKey.bp, digit: '7'),
-          _key('ㅅㅎ', CjKey.sh, digit: '8'),
-          _key('ㅈㅊ', CjKey.jc, digit: '9'),
-          _plain('.,?!', () { _emit(CjOut(cjCompose(_st) + '.', CjState())); }),   // 조합 중이던 글자를 굳히고 마침표
-        ]),
-        // 넷째 줄 — 삼성 천지인과 같은 자리: !#1 · 한/영 · ㅇㅁ · 띄어쓰기 · $
-        //   !#1 과 한/영 은 폰 자판으로 오간다(1번 안 · 영문·특수문자는 폰 자판)
-        Row(children: [
-          _plain('!#1', () { widget.onPhoneIme?.call(); }, flex: 3),
-          _plain('한/영', () { widget.onPhoneIme?.call(); }, flex: 2),
-          _key('ㅇㅁ', CjKey.om, digit: '0', flex: 3),
-          _key('␣', CjKey.space, fn: true, flex: 3),
-          _plain('\$', () { widget.onPhoneIme?.call(); }, flex: 2),
-        ]),
-      ]),
+      child: Column(mainAxisSize: MainAxisSize.min, children: rows),
     );
   }
 }

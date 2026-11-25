@@ -119,11 +119,19 @@ class CjOut {
 
 bool _isCons(CjKey k) => _cycle.containsKey(k);
 
+/// 굳혀 내보낼 글자 — 아직 글자가 아닌 획(점만 쌓인 '·' '··')은 내보내지 않는다.
+///   보여 줄 때는 점을 그대로 보여 주되(치는 사람이 알아야 하므로),
+///   굳힐 때 그대로 내보내면 PC 에 '··' 가 글자로 남는다(사장님 실기 11/26).
+String _commit(CjState s) {
+  if (s.cho.isEmpty && s.jung.isEmpty) return '';
+  return cjCompose(s);
+}
+
 CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
   final s = cur.copy();
 
   if (k == CjKey.space || k == CjKey.enter) {
-    final done = cjCompose(s) + (k == CjKey.space ? ' ' : '\n');
+    final done = _commit(s) + (k == CjKey.space ? ' ' : '\n');
     return CjOut(done, CjState());
   }
 
@@ -140,8 +148,7 @@ CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
       final keep = moved != null ? moved[0] : '';
       final head = s.copy()..jong = keep;
       final next = CjState()..cho = give..strokes = sym;
-      if (_vowel.containsKey(sym)) return CjOut(cjCompose(head), next);
-      return CjOut(cjCompose(head), next);
+      return CjOut(_commit(head), next);
     }
     final tryStrokes = s.strokes + sym;
     if (_vowel.containsKey(tryStrokes) || _vowelPart.contains(tryStrokes)) {
@@ -149,7 +156,7 @@ CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
     }
     // 더 못 쌓으면 지금 글자를 굳히고 새 글자의 모음으로
     if (s.strokes.isEmpty) { s.strokes = sym; return CjOut('', s); }
-    final done = cjCompose(s);
+    final done = _commit(s);
     return CjOut(done, CjState()..strokes = sym);
   }
 
@@ -192,11 +199,11 @@ CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
         }
       }
       // 종성을 더 못 붙이면 이 글자를 굳히고 새 글자 초성으로
-      final done = cjCompose(s);
+      final done = _commit(s);
       return CjOut(done, CjState()..cho = first..lastKey = k..lastMs = nowMs);
     }
     // 초성만 있고 모음이 아직 없는데 다른 자음 → 앞 자음을 굳힘
-    final done = cjCompose(s);
+    final done = _commit(s);
     return CjOut(done, CjState()..cho = first..lastKey = k..lastMs = nowMs);
   }
 

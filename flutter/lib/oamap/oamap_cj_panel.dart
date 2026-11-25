@@ -80,6 +80,14 @@ class OamapCjPanel extends StatelessWidget {
                       fontSize: 12,
                       color: dark ? Colors.white70 : Colors.black54)),
               const Spacer(),
+              // 폰 자판(음성 입력 등 폰 것이 꼭 필요할 때만) — 한/영 은 이 자판 안에서 바뀐다
+              IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 40, minHeight: 28),
+                icon: Icon(Icons.smartphone,
+                    size: 17, color: dark ? Colors.white70 : Colors.black54),
+                onPressed: onPhoneIme,
+              ),
               IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 40, minHeight: 28),
@@ -93,7 +101,7 @@ class OamapCjPanel extends StatelessWidget {
           OamapCjKeyboard(
             preview: oamapCjPreview,
             cycleMs: oamapCjCycleMs,
-            onPhoneIme: onPhoneIme,
+            onEnter: () => oamapCjEnterToRemote(inputModel: ffi.inputModel),
             onSend: (back, text) => oamapCjSendToRemote(
               inputModel: ffi.inputModel,
               sessionId: ffi.sessionId,

@@ -121,6 +121,58 @@ void main() {
     expect(out, '하');
   });
 
+  // 사장님 실기와 같은 문장(R-1812) — 한 문장을 통째로
+  test('한 문장 통째 — 안녕하세요 이준열입니다', () {
+    final keys = <CjKey>[]
+      ..addAll(seq('ㅇㅣ·ㄴ'))      // 안      0 1 2 3
+      ..addAll(seq('ㄴ··ㅣㅇ'))     // 녕      4 5 6 7 8
+      ..addAll(seq('ㅅㅅㅣ·'))      // 하      9 10 11 12
+      ..addAll(seq('ㅅ·ㅣㅣ'))      // 세      13 14 15 16
+      ..addAll(seq('ㅇ··ㅡ'))       // 요      17 18 19 20
+      ..addAll(seq(' '))            // 띄어쓰기 21
+      ..addAll(seq('ㅇㅣ'))         // 이      22 23
+      ..addAll(seq('ㅈㅡ·ㄴ'))      // 준      24 25 26 27
+      ..addAll(seq('ㅇ··ㅣㄴㄴ'))   // 열      28 29 30 31 32 33
+      ..addAll(seq('ㅇㅣㅂ'))       // 입      34 35 36
+      ..addAll(seq('ㄴㅣ'))         // 니      37 38
+      ..addAll(seq('ㄷㅣ·'));       // 다      39 40 41
+    // 같은 글쇠를 잇달아 '바로' 누르는 곳만 빠르게 — ㅅㅅ(ㅎ) 과 ㄴㄴ(받침 ㄹ)
+    const fast = [10, 33];
+    var t = 0;
+    final at = <int>[];
+    for (var i = 0; i < keys.length; i++) {
+      t += fast.contains(i) ? 200 : 2000;
+      at.add(t);
+    }
+    expect(cjType(keys, atMs: at), '안녕하세요 이준열입니다');
+  });
+
+  test('빠르게 연타해도 어긋나지 않는다 — 때를 안 줘도 같은 글자', () {
+    // 때를 안 주면 늘 거듭 누르기로 본다(규칙) — 같은 글쇠가 잇닿지 않는 낱말은 그대로여야 한다
+    expect(cjType(seq('ㄷㅣ·ㅅㅣㅇ')), '다싱');
+    expect(cjType(seq('ㅂㅣ·ㄱㅣ')), '바기');
+  });
+
+  test('길게 눌러 숫자 — 글자 사이에 숫자가 섞여도 한글이 안 깨짐', () {
+    var st = CjState();
+    final out = StringBuffer();
+    for (final key in seq('ㄱㅣ·')) {   // '가'
+      final o = cjPress(st, key);
+      st = o.state;
+      out.write(o.commit);
+    }
+    final d = cjLongPress(st, CjKey.dt);   // 길게 ㄷ = 6
+    expect(d.handled, true);
+    out.write(d.commit);
+    st = d.state;
+    for (final key in seq('ㄴㅣ·')) {   // '나'
+      final o = cjPress(st, key);
+      st = o.state;
+      out.write(o.commit);
+    }
+    expect(out.toString() + cjCompose(st), '가6나');
+  });
+
   test('조합 중 미리보기 — 한 글자씩 자란다', () {
     var st = CjState();
     final shown = <String>[];
@@ -140,6 +192,30 @@ void main() {
     st = cjPress(st, CjKey.back).state; expect(cjCompose(st), '히');
     st = cjPress(st, CjKey.back).state; expect(cjCompose(st), 'ㅎ');
     st = cjPress(st, CjKey.back).state; expect(cjCompose(st), '');
+  });
+
+  // 사장님 실기 11/26 — PC 에 'ㆍㆍ' 나 낱자모가 글자로 남던 것
+  test('점만 쌓인 것은 글자로 굳지 않는다', () {
+    // 점 두 개 뒤에 자음 → 점은 사라지고 그 자음만 남는다('··ㄱ' 아님)
+    expect(cjType(seq('··ㄱㅣ·')), '가');
+    // 점 하나 뒤에 띄어쓰기 → 점은 안 나간다
+    var st = CjState();
+    st = cjPress(st, CjKey.dot).state;
+    final sp = cjPress(st, CjKey.space);
+    expect(sp.commit, ' ');
+    // 글자 뒤에 점을 찍다 멈추고 새 글자 → 점은 하나도 안 남는다
+    //   (넘어간 받침 ㄴ 이 홀로 남는 것은 천지인 규칙대로 맞다)
+    final mid = cjType(seq('ㄱㅣ·ㄴ··ㄷㅣ·'));
+    expect(mid.contains('·'), false);
+    expect(mid, '가ㄴ다');
+  });
+
+  test('점을 쌓는 중에도 보이는 것은 점 그대로', () {
+    var st = CjState();
+    st = cjPress(st, CjKey.dot).state;
+    expect(cjCompose(st), '·');
+    st = cjPress(st, CjKey.dot).state;
+    expect(cjCompose(st), '··');
   });
 
   test('조합이 비면 우리가 처리하지 않음(원격에 ⌫ 그대로)', () {
