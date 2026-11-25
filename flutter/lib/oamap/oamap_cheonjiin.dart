@@ -65,9 +65,9 @@ final Set<String> _vowelPart = {
     for (var i = 1; i < key.length; i++) key.substring(0, i),
 };
 
-/// 같은 키를 거듭 눌러 글자를 바꾸는 시간(밀리초) — 이 시간이 지나 다시 누르면 새 글자로 본다.
-///   삼성 천지인과 같은 셈(안 → (바로) 알 · 안 → (쉬고) 안ㄴ…). 설정에서 바꿀 수 있게 둔다.
-const int cjCycleMs = 900;
+/// 쓰지 않는다 — 전에는 이 시간이 지나면 저절로 끊었으나, 사장님 11/26 지시로
+/// 때(시간)로는 끊지 않고 [␣] 로만 끊는다. 부르는 쪽 짜임을 깨지 않으려고 이름만 남긴다.
+const int cjCycleMs = 0;
 
 String _sym(CjKey k) => k == CjKey.ii ? 'ㅣ' : (k == CjKey.dot ? '·' : 'ㅡ');
 
@@ -127,8 +127,18 @@ String _commit(CjState s) {
   return cjCompose(s);
 }
 
-CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
+CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = 0}) {
   final s = cur.copy();
+
+  // [␣] 첫 번은 '끊기' — 같은 글쇠를 다시 눌러도 글자가 돌지 않고 새 자모로 간다.
+  //   사장님 11/26: 1초 기다리는 대신 [␣] 로 끊는다(삼성 천지인과 같은 꼴).
+  //   보기: 안 [␣] ㄴ ㅣ · ㅇ → '안녕'   ·   안 [␣][␣] ㄴ… → '안 녕'
+  //   끊을 것이 없으면(돌림 대기 중이 아니면) [␣] 는 그냥 띄어쓰기다.
+  if (k == CjKey.space && s.lastKey != null) {
+    s.lastKey = null;
+    s.jongFromCycle = false;
+    return CjOut('', s);
+  }
 
   if (k == CjKey.space || k == CjKey.enter) {
     final done = _commit(s) + (k == CjKey.space ? ' ' : '\n');
@@ -164,8 +174,8 @@ CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
   if (_isCons(k)) {
     final list = _cycle[k]!;
     // 같은 키 거듭 누르기(초성 자리 · 종성 자리 둘 다)
-    final soon = nowMs == 0 || (nowMs - s.lastMs) <= cycleMs;   // 때를 안 주면(시험) 늘 거듭 누르기로 본다
-    if (s.lastKey == k && soon) {
+    //   때(시간)로 끊지 않는다 — [␣] 로만 끊는다(위 참조 · 사장님 11/26).
+    if (s.lastKey == k) {
       if (s.jung.isEmpty && s.cho.isNotEmpty) {          // 초성 자리에서 바꿈
         s.cycleAt = (s.cycleAt + 1) % list.length;
         s.cho = list[s.cycleAt];

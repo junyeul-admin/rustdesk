@@ -19,7 +19,6 @@ class OamapCjKeyboard extends StatefulWidget {
   final VoidCallback? onEnter;    // 줄바꿈은 글자가 아니라 키로 보낸다
   final VoidCallback? onPhoneIme; // 폰 자판을 부르는 길(이제 숨은 단추로만)
   final bool preview;             // 조합 중 글자를 미리 보여 줄지(설정)
-  final int cycleMs;              // 같은 글쇠를 다시 눌러 글자를 바꾸는 시간(설정)
   final double keyHeight;
   const OamapCjKeyboard({
     super.key,
@@ -27,7 +26,6 @@ class OamapCjKeyboard extends StatefulWidget {
     this.onEnter,
     this.onPhoneIme,
     this.preview = true,
-    this.cycleMs = cjCycleMs,
     this.keyHeight = 46,
   });
 
@@ -68,8 +66,7 @@ class _OamapCjKeyboardState extends State<OamapCjKeyboard> {
   // 글쇠 한 번 — 되풀이 타이머는 건드리지 않는다(⌫ 꾹 누름이 스스로를 끄지 않게)
   void _press(CjKey k) {
     if (k == CjKey.enter) { _pressEnter(); return; }
-    _emit(cjPress(_st, k,
-        nowMs: DateTime.now().millisecondsSinceEpoch, cycleMs: widget.cycleMs));
+    _emit(cjPress(_st, k));
   }
 
   void _tap(CjKey k) {

@@ -63,30 +63,47 @@ void main() {
     expect(cjType(seq('ㅇㅣ·ㄴㅣ·')), '아나');
   });
 
-  test('안녕하세요 — 때(시간)를 주고', () {
-    // 안: ㅇ ㅣ · ㄴ / 녕: ㄴ · · ㅣ ㅇ / 하: ㅅㅅ(바로) ㅣ · / 세: ㅅ · ㅣ ㅣ / 요: ㅇ · · ㅡ
-    final keys = <CjKey>[]
-      ..addAll(seq('ㅇㅣ·ㄴ'))      // 0 1 2 3
-      ..addAll(seq('ㄴ··ㅣㅇ'))     // 4 5 6 7 8
-      ..addAll(seq('ㅅㅅㅣ·'))      // 9 10 11 12
-      ..addAll(seq('ㅅ·ㅣㅣ'))      // 13 14 15 16
-      ..addAll(seq('ㅇ··ㅡ'));      // 17 18 19 20
-    // 거듭 누르기(ㅅㅅ)만 200ms 안 · 나머지는 2초씩 띄움
-    var t = 0;
-    final at = <int>[];
-    for (var i = 0; i < keys.length; i++) {
-      final sameFast = i == 10;   // 'ㅅㅅ' 의 두 번째
-      t += sameFast ? 200 : 2000;
-      at.add(t);
-    }
-    expect(cjType(keys, atMs: at), '안녕하세요');
+  test('안녕하세요 — 같은 글쇠는 [␣] 로 끊는다', () {
+    // 안: ㅇ ㅣ · ㄴ / [␣] / 녕: ㄴ · · ㅣ ㅇ / 하: ㅅㅅ ㅣ · / 세: ㅅ · ㅣ ㅣ / 요: ㅇ · · ㅡ
+    expect(cjType(seq('ㅇㅣ·ㄴ ㄴ··ㅣㅇㅅㅅㅣ·ㅅ·ㅣㅣㅇ··ㅡ')), '안녕하세요');
   });
 
-  test('같은 자음 키 — 바로 다시 누르면 바뀌고, 쉬었다 누르면 새 글자', () {
-    // 안 + (바로) ㄴ → 알
-    expect(cjType(seq('ㅇㅣ·ㄴㄴ'), atMs: [0, 100, 200, 300, 400]), '알');
-    // 안 + (쉬고) ㄴ → 안ㄴ
-    expect(cjType(seq('ㅇㅣ·ㄴㄴ'), atMs: [0, 100, 200, 300, 5000]), '안ㄴ');
+  // 사장님 11/26 — 1초 기다리기 없음. 같은 글쇠는 [␣] 한 번으로 끊는다.
+  test('같은 자음 키 — 그냥 다시 누르면 돌고, [␣] 뒤엔 새 자모', () {
+    expect(cjType(seq('ㅇㅣ·ㄴㄴ')), '알');        // 안 + ㄴ → 받침이 ㄹ 로 돌아감
+    expect(cjType(seq('ㅇㅣ·ㄴ ㄴ')), '안ㄴ');     // 안 + [␣] + ㄴ → 새 자모
+  });
+
+  test('[␣] 한 번은 끊기만 · 두 번이라야 띄어쓰기', () {
+    expect(cjType(seq('ㅇㅣ·ㄴ ㄴ··ㅣㅇ')), '안녕');       // 안 [␣] 녕
+    expect(cjType(seq('ㅇㅣ·ㄴ  ㄴ··ㅣㅇ')), '안 녕');     // 안 [␣][␣] 녕
+  });
+
+  test('끊을 것이 없으면 [␣] 는 그냥 띄어쓰기', () {
+    expect(cjType(seq('ㄱㅣ· ㄴㅣ·')), '가 나');          // 모음으로 끝나 돌림 대기가 없음
+    var st = CjState();
+    final sp = cjPress(st, CjKey.space);                  // 아무것도 안 친 채 [␣]
+    expect(sp.commit, ' ');
+  });
+
+  test('끊기는 PC 로 빈칸을 보내지 않는다', () {
+    var st = CjState();
+    for (final key in seq('ㅇㅣ·ㄴ')) { st = cjPress(st, key).state; }
+    final cut = cjPress(st, CjKey.space);
+    expect(cut.commit, '');            // 보낼 글자 0
+    expect(cut.preview, '안');          // 화면도 그대로
+  });
+
+  test('다른 글쇠는 끊기 없이 바로 — 할머니', () {
+    // 할: ㅅㅅ ㅣ · ㄴㄴ / 머: ㅇㅇ · ㅣ / 니: ㄴ ㅣ
+    expect(cjType(seq('ㅅㅅㅣ·ㄴㄴㅇㅇ·ㅣㄴㅣ')), '할머니');
+  });
+
+  test('돌림과 끊기를 가름 — 가까이', () {
+    // 가 뒤의 ㄱ 은 받침으로 붙었다가 돌고(각→갘→갂), 모음이 오면 다음 글자 초성으로 넘어간다.
+    //   끊기가 필요 없는 자리 — [␣] 를 넣으면 오히려 띄어쓰기가 된다.
+    expect(cjType(seq('ㄱㅣ·ㄱㄱㄱㅣ·ㅇㅣ')), '가까이');
+    expect(cjType(seq('ㄱㅣ· ㄱㄱㄱㅣ·ㅇㅣ')), '가 까이');
   });
 
 
@@ -124,31 +141,23 @@ void main() {
   // 사장님 실기와 같은 문장(R-1812) — 한 문장을 통째로
   test('한 문장 통째 — 안녕하세요 이준열입니다', () {
     final keys = <CjKey>[]
-      ..addAll(seq('ㅇㅣ·ㄴ'))      // 안      0 1 2 3
-      ..addAll(seq('ㄴ··ㅣㅇ'))     // 녕      4 5 6 7 8
-      ..addAll(seq('ㅅㅅㅣ·'))      // 하      9 10 11 12
-      ..addAll(seq('ㅅ·ㅣㅣ'))      // 세      13 14 15 16
-      ..addAll(seq('ㅇ··ㅡ'))       // 요      17 18 19 20
-      ..addAll(seq(' '))            // 띄어쓰기 21
-      ..addAll(seq('ㅇㅣ'))         // 이      22 23
-      ..addAll(seq('ㅈㅡ·ㄴ'))      // 준      24 25 26 27
-      ..addAll(seq('ㅇ··ㅣㄴㄴ'))   // 열      28 29 30 31 32 33
-      ..addAll(seq('ㅇㅣㅂ'))       // 입      34 35 36
-      ..addAll(seq('ㄴㅣ'))         // 니      37 38
-      ..addAll(seq('ㄷㅣ·'));       // 다      39 40 41
-    // 같은 글쇠를 잇달아 '바로' 누르는 곳만 빠르게 — ㅅㅅ(ㅎ) 과 ㄴㄴ(받침 ㄹ)
-    const fast = [10, 33];
-    var t = 0;
-    final at = <int>[];
-    for (var i = 0; i < keys.length; i++) {
-      t += fast.contains(i) ? 200 : 2000;
-      at.add(t);
-    }
-    expect(cjType(keys, atMs: at), '안녕하세요 이준열입니다');
+      ..addAll(seq('ㅇㅣ·ㄴ'))      // 안
+      ..addAll(seq(' '))            // [␣] 끊기(ㄴ 이 잇닿음)
+      ..addAll(seq('ㄴ··ㅣㅇ'))     // 녕
+      ..addAll(seq('ㅅㅅㅣ·'))      // 하
+      ..addAll(seq('ㅅ·ㅣㅣ'))      // 세
+      ..addAll(seq('ㅇ··ㅡ'))       // 요
+      ..addAll(seq(' '))            // 진짜 띄어쓰기(끊을 것 없음)
+      ..addAll(seq('ㅇㅣ'))         // 이
+      ..addAll(seq('ㅈㅡ·ㄴ'))      // 준
+      ..addAll(seq('ㅇ··ㅣㄴㄴ'))   // 열(받침 ㄴ→ㄹ 돌림)
+      ..addAll(seq('ㅇㅣㅂ'))       // 입
+      ..addAll(seq('ㄴㅣ'))         // 니
+      ..addAll(seq('ㄷㅣ·'));       // 다
+    expect(cjType(keys), '안녕하세요 이준열입니다');
   });
 
-  test('빠르게 연타해도 어긋나지 않는다 — 때를 안 줘도 같은 글자', () {
-    // 때를 안 주면 늘 거듭 누르기로 본다(규칙) — 같은 글쇠가 잇닿지 않는 낱말은 그대로여야 한다
+  test('빠르게 연타해도 어긋나지 않는다 — 같은 글쇠가 잇닿지 않으면 그대로', () {
     expect(cjType(seq('ㄷㅣ·ㅅㅣㅇ')), '다싱');
     expect(cjType(seq('ㅂㅣ·ㄱㅣ')), '바기');
   });
