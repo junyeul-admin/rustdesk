@@ -61,7 +61,7 @@ a = a.replace(flutterStep, (m, step, next) => step +
   '        shell: bash\n' +
   '        run: |\n' +
   '          set +e\n' +
-  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart test/oamap_cheonjiin_test.dart test/oamap_cj_send_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
+  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
   '          rc=${PIPESTATUS[0]}\n' +
   '          last=$(grep -E "^[0-9:]+ \\+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)\n' +
   '          if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi\n' +

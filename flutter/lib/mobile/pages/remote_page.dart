@@ -25,7 +25,6 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
-import '../../oamap/oamap_cj_panel.dart'; // OAMap 0017
 import '../../oamap/oamap_typing.dart'; // OAMap 0008
 import '../../oamap/oamap_cursor.dart'; // OAMap 0011
 import '../../oamap/oamap_pan.dart'; // OAMap 0005
@@ -115,8 +114,6 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final FocusNode _mobileFocusNode = FocusNode();
   final FocusNode _physicalFocusNode = FocusNode();
   var _showEdit = false; // use soft keyboard
-  var _cjShow = false; // OAMap 0017: 천지인 자판이 떠 있는가
-  var _cjPhoneOnce = false; // OAMap 0017: 이번 한 번만 폰 자판으로
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
@@ -493,53 +490,12 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         connectionId: sessionId.toString(),
         ffi: gFFI,
         onEnable: () async {
-          _openKeyboardAfterGate();
+          _openKeyboardUnlocked();
         },
       );
       return;
     }
-    _openKeyboardAfterGate();
-  }
-
-  // OAMap 0017: 문(Wayland 확인)을 지난 뒤 어느 자판을 열지 고른다.
-  //   천지인을 켜 두었으면 우리 자판 · 껐으면 예전 그대로 폰 자판.
-  void _openKeyboardAfterGate() {
-    if (oamapCjOn && !_cjPhoneOnce) {
-      _openCjKeyboard();
-      return;
-    }
-    _cjPhoneOnce = false;
     _openKeyboardUnlocked();
-  }
-
-  // OAMap 0017: 자판 단추 → 천지인 자판(설정에서 끄면 예전처럼 폰 자판)
-  //   폰 자판이 떠 있으면 먼저 내린다 — 두 자판이 같이 뜨면 화면을 가린다.
-  void _openCjKeyboard() {
-    // OAMap 0021: 우리 자판이 떠 있는 동안에는 폰에서 올라오는 키 신호를 하나도
-    //   넘기지 않는다. 글자는 우리가 sessionInputString 으로 보내므로 막아도 된다.
-    //   (삼성 천지인 ㅅㅎ 글쇠가 숫자 8 신호를 같이 보내 '안녕하8요' 가 되던 길)
-    inputModel.keyboardInputAllowed = false;
-    gFFI.invokeMethod("enable_soft_keyboard", false);
-    _mobileFocusNode.unfocus();
-    _physicalFocusNode.requestFocus();
-    setState(() {
-      _showEdit = false;
-      _cjShow = true;
-    });
-  }
-
-  // 천지인 자판의 [!#1] [한/영] [$] — 폰 자판으로 넘어간다(영문·특수문자·음성)
-  //   이 한 번만 폰 자판으로 간다(다음에 자판 단추를 누르면 다시 천지인).
-  void _cjToPhoneIme() {
-    _cjPhoneOnce = true;
-    _closeCj();
-    openKeyboard();
-  }
-
-  // 우리 자판을 내릴 때 — 폰 키 신호를 다시 받는다(폰 자판·물리 자판을 쓰려면 필요)
-  void _closeCj() {
-    inputModel.keyboardInputAllowed = true;
-    setState(() => _cjShow = false);
   }
 
   void _openKeyboardUnlocked() {
@@ -565,17 +521,11 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
-  Widget _bottomWidget() => _cjShow // OAMap 0017: 천지인 자판이 바닥을 차지한다
-      ? OamapCjPanel(
-          ffi: gFFI,
-          onPhoneIme: _cjToPhoneIme,
-          onClose: _closeCj,
-        )
-      : (_showGestureHelp
-          ? getGestureHelp()
-          : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
-              ? getBottomAppBar()
-              : Offstage()));
+  Widget _bottomWidget() => _showGestureHelp
+      ? getGestureHelp()
+      : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
+          ? getBottomAppBar()
+          : Offstage());
 
   @override
   Widget build(BuildContext context) {
