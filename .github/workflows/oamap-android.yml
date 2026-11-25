@@ -156,16 +156,16 @@ jobs:
             git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
           fi
 
-      - name: OAMap Hangul input test (real Dart, 63 cases)
+      - name: OAMap Hangul input test (real Dart)
         working-directory: flutter
         shell: bash
         run: |
           set +e
-          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
+          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart test/oamap_cheonjiin_test.dart test/oamap_cj_send_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"
           rc=${PIPESTATUS[0]}
           last=$(grep -E "^[0-9:]+ \+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)
           if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi
-          echo "OAMap Hangul input test (real Dart, 63 cases): $res - $last" >> "$GITHUB_STEP_SUMMARY"
+          echo "OAMap Hangul input test (real Dart): $res - $last" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
 
       - uses: nttld/setup-ndk@ed92fe6cadad69be94a966a7ee3271275e62f779 # v1

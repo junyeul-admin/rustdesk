@@ -56,16 +56,16 @@ const flutterStep = /(\n      - name: Patch flutter\n(?:        .*\n)+?)(\n     
   : /(\n      - name: Install flutter\n(?:        .*\n)+?)(\n      - )/;
 if (!flutterStep.test(a)) fail('Install flutter step not found');
 a = a.replace(flutterStep, (m, step, next) => step +
-  '\n      - name: OAMap Hangul input test (real Dart, 63 cases)\n' +
+  '\n      - name: OAMap Hangul input test (real Dart)\n' +
   '        working-directory: flutter\n' +
   '        shell: bash\n' +
   '        run: |\n' +
   '          set +e\n' +
-  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
+  '          flutter test test/oamap_input_test.dart test/oamap_compose_test.dart test/oamap_cursor_test.dart test/oamap_cheonjiin_test.dart test/oamap_cj_send_test.dart --reporter expanded 2>&1 | tee "$RUNNER_TEMP/oamap_input_test.log"\n' +
   '          rc=${PIPESTATUS[0]}\n' +
   '          last=$(grep -E "^[0-9:]+ \\+[0-9]+" "$RUNNER_TEMP/oamap_input_test.log" | tail -n 1)\n' +
   '          if [ "$rc" -eq 0 ]; then res=PASS; else res=FAIL; fi\n' +
-  '          echo "OAMap Hangul input test (real Dart, 63 cases): $res - $last" >> "$GITHUB_STEP_SUMMARY"\n' +
+  '          echo "OAMap Hangul input test (real Dart): $res - $last" >> "$GITHUB_STEP_SUMMARY"\n' +
   '          exit "$rc"\n' + next);
 
 // dart-define flags through env (no ${{ }} inside the script)
