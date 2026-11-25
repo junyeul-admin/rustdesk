@@ -14,6 +14,15 @@ void main() {
     expect(e.shown, '한');
   });
 
+  test('겉모양이 안 바뀌면 아무것도 안 보낸다', () {
+    final e = CjEcho();
+    expect(e.step('', 'ㄴ'), const CjSend(0, 'ㄴ'));
+    expect(e.step('', 'ㄴ'), const CjSend(0, ''));   // 점을 쌓는 중 — 보이는 글자 그대로
+    expect(e.step('', 'ㄴ'), const CjSend(0, ''));
+    expect(e.step('', '녀'), const CjSend(1, '녀'));
+    expect(e.shown, '녀');
+  });
+
   test('굳힌 글자는 지우지 않는다', () {
     final e = CjEcho();
     e.step('', '가');                                   // 조합 중 '가'

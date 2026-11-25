@@ -38,6 +38,9 @@ class CjEcho {
       _shown = '';
       return CjSend(b, commit);
     }
+    // 보이는 글자가 그대로면 아무것도 보내지 않는다(점을 쌓는 중처럼 겉모양이 안 바뀌는 때)
+    //   헛되게 지우고 같은 글자를 다시 치면 느려 보이고, 느린 연결에서는 깜빡인다.
+    if (commit.isEmpty && next == _shown) return const CjSend(0, '');
     // 조합 중이던 글자를 지우고 → 굳힌 글자 + 새 조합 중 글자
     final back = _shown.length;
     final text = commit + next;

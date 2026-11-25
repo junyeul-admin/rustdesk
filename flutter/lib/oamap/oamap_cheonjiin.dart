@@ -58,6 +58,13 @@ const Map<String, String> _vowel = {
   'ㅡㅣ': 'ㅢ',
 };
 
+/// 아직 모음은 아니지만 더 쌓으면 모음이 되는 '중간 획' — 보기: '··' 는 ㅕ(··ㅣ)·ㅛ(··ㅡ) 로 가는 길
+///   이것이 없으면 ㅕ ㅛ ㅒ ㅖ 처럼 점을 먼저 두 번 찍는 모음이 중간에 끊긴다.
+final Set<String> _vowelPart = {
+  for (final key in _vowel.keys)
+    for (var i = 1; i < key.length; i++) key.substring(0, i),
+};
+
 /// 같은 키를 거듭 눌러 글자를 바꾸는 시간(밀리초) — 이 시간이 지나 다시 누르면 새 글자로 본다.
 ///   삼성 천지인과 같은 셈(안 → (바로) 알 · 안 → (쉬고) 안ㄴ…). 설정에서 바꿀 수 있게 둔다.
 const int cjCycleMs = 900;
@@ -137,7 +144,9 @@ CjOut cjPress(CjState cur, CjKey k, {int nowMs = 0, int cycleMs = cjCycleMs}) {
       return CjOut(cjCompose(head), next);
     }
     final tryStrokes = s.strokes + sym;
-    if (_vowel.containsKey(tryStrokes)) { s.strokes = tryStrokes; return CjOut('', s); }
+    if (_vowel.containsKey(tryStrokes) || _vowelPart.contains(tryStrokes)) {
+      s.strokes = tryStrokes; return CjOut('', s);
+    }
     // 더 못 쌓으면 지금 글자를 굳히고 새 글자의 모음으로
     if (s.strokes.isEmpty) { s.strokes = sym; return CjOut('', s); }
     final done = cjCompose(s);

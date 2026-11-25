@@ -33,6 +33,19 @@ void main() {
     expect(cjType(seq('ㅡㅣ')), 'ㅢ');
   });
 
+  // 점을 먼저 두 번 찍는 모음 — '··' 는 아직 모음이 아니라서 중간에 끊기기 쉽다
+  test('점 두 번으로 시작하는 모음 — ㅕ ㅛ ㅠ ㅒ ㅖ', () {
+    expect(cjType(seq('··ㅣ')), 'ㅕ');
+    expect(cjType(seq('··ㅡ')), 'ㅛ');
+    expect(cjType(seq('ㅡ··')), 'ㅠ');
+    expect(cjType(seq('ㅣ··ㅣ')), 'ㅒ');
+    expect(cjType(seq('··ㅣㅣ')), 'ㅖ');
+    // 초성과 함께 — 녀 뇨 뉴
+    expect(cjType(seq('ㄴ··ㅣ')), '녀');
+    expect(cjType(seq('ㄴ··ㅡ')), '뇨');
+    expect(cjType(seq('ㄴㅡ··')), '뉴');
+  });
+
   test('글자 하나 — 가·나·하', () {
     expect(cjType(seq('ㄱㅣ·')), '가');
     expect(cjType(seq('ㄴㅣ·')), '나');
@@ -51,18 +64,18 @@ void main() {
   });
 
   test('안녕하세요 — 때(시간)를 주고', () {
-    // 안: ㅇ ㅣ · ㄴ / 녕: ㄴ · · ㅣ ㅇ / 하: ㅅㅅ(바로) ㅣ · / 세: ㅅ · ㅣ ㅣ / 요: · · ㅡ
+    // 안: ㅇ ㅣ · ㄴ / 녕: ㄴ · · ㅣ ㅇ / 하: ㅅㅅ(바로) ㅣ · / 세: ㅅ · ㅣ ㅣ / 요: ㅇ · · ㅡ
     final keys = <CjKey>[]
-      ..addAll(seq('ㅇㅣ·ㄴ'))
-      ..addAll(seq('ㄴ··ㅣㅇ'))
-      ..addAll(seq('ㅅㅅㅣ·'))
-      ..addAll(seq('ㅅ·ㅣㅣ'))
-      ..addAll(seq('··ㅡ'));
+      ..addAll(seq('ㅇㅣ·ㄴ'))      // 0 1 2 3
+      ..addAll(seq('ㄴ··ㅣㅇ'))     // 4 5 6 7 8
+      ..addAll(seq('ㅅㅅㅣ·'))      // 9 10 11 12
+      ..addAll(seq('ㅅ·ㅣㅣ'))      // 13 14 15 16
+      ..addAll(seq('ㅇ··ㅡ'));      // 17 18 19 20
     // 거듭 누르기(ㅅㅅ)만 200ms 안 · 나머지는 2초씩 띄움
     var t = 0;
     final at = <int>[];
     for (var i = 0; i < keys.length; i++) {
-      final sameFast = i == 15;   // 'ㅅㅅ' 의 두 번째
+      final sameFast = i == 10;   // 'ㅅㅅ' 의 두 번째
       t += sameFast ? 200 : 2000;
       at.add(t);
     }
@@ -91,8 +104,8 @@ void main() {
   test('영상에 나온 쌍자음 — 까 빠 씻 찾', () {
     expect(cjType(seq('ㄱㄱㄱㅣ·')), '까');          // ㄱ→ㅋ→ㄲ
     expect(cjType(seq('ㅂㅂㅂㅣ·')), '빠');          // ㅂ→ㅍ→ㅃ
-    expect(cjType(seq('ㅅㅅㅅㅣㅅㄷ')), '씻');       // ㅆ + ㅣ + 받침 ㅅ
-    expect(cjType(seq('ㅈㅣ·ㅈㅈ')), '찾');          // 받침 ㅈ→ㅊ
+    expect(cjType(seq('ㅅㅅㅅㅣㅅ')), '씻');        // ㅆ + ㅣ + 받침 ㅅ
+    expect(cjType(seq('ㅈㅈㅣ·ㅈ')), '찾');          // 초성 ㅈ→ㅊ · 받침 ㅈ
   });
 
   test('영상에 나온 낱말 — 왜 네 애 잘', () {
