@@ -515,7 +515,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   // OAMap 0017: 자판 단추 → 천지인 자판(설정에서 끄면 예전처럼 폰 자판)
   //   폰 자판이 떠 있으면 먼저 내린다 — 두 자판이 같이 뜨면 화면을 가린다.
   void _openCjKeyboard() {
-    inputModel.keyboardInputAllowed = true;
+    // OAMap 0021: 우리 자판이 떠 있는 동안에는 폰에서 올라오는 키 신호를 하나도
+    //   넘기지 않는다. 글자는 우리가 sessionInputString 으로 보내므로 막아도 된다.
+    //   (삼성 천지인 ㅅㅎ 글쇠가 숫자 8 신호를 같이 보내 '안녕하8요' 가 되던 길)
+    inputModel.keyboardInputAllowed = false;
     gFFI.invokeMethod("enable_soft_keyboard", false);
     _mobileFocusNode.unfocus();
     _physicalFocusNode.requestFocus();
@@ -529,8 +532,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   //   이 한 번만 폰 자판으로 간다(다음에 자판 단추를 누르면 다시 천지인).
   void _cjToPhoneIme() {
     _cjPhoneOnce = true;
-    setState(() => _cjShow = false);
+    _closeCj();
     openKeyboard();
+  }
+
+  // 우리 자판을 내릴 때 — 폰 키 신호를 다시 받는다(폰 자판·물리 자판을 쓰려면 필요)
+  void _closeCj() {
+    inputModel.keyboardInputAllowed = true;
+    setState(() => _cjShow = false);
   }
 
   void _openKeyboardUnlocked() {
@@ -560,7 +569,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       ? OamapCjPanel(
           ffi: gFFI,
           onPhoneIme: _cjToPhoneIme,
-          onClose: () => setState(() => _cjShow = false),
+          onClose: _closeCj,
         )
       : (_showGestureHelp
           ? getGestureHelp()

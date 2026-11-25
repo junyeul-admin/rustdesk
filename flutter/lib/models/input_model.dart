@@ -844,6 +844,12 @@ class InputModel {
   }
 
   KeyEventResult handleKeyEvent(KeyEvent e) {
+    // OAMap 0021: while键 input is switched off, nothing from the phone reaches
+    // the peer. The flag already existed (Wayland gate, toolbar) but only the
+    // text path honoured it, so a soft keyboard's raw key events still went
+    // through — that is how Samsung's ㅅㅎ key put an "8" on the PC while the
+    // app's own Cheonjiin pad was typing the text.
+    if (!keyboardInputAllowed) return KeyEventResult.handled;
     if (_localFlutterShortcuts.tryDispatch(e)) return KeyEventResult.handled;
     if (isViewOnly) {
       if (isWeb && !isInputSourceFlutter) return KeyEventResult.ignored;
