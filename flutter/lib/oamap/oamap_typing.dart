@@ -29,6 +29,7 @@ import 'package:settings_ui/settings_ui.dart';
 
 import '../models/model.dart';
 import '../models/platform_model.dart';
+import 'oamap_cj_panel.dart';
 import 'oamap_cursor.dart';
 import 'oamap_input.dart';
 
@@ -108,6 +109,19 @@ AbstractSettingsSection oamapTypingSettingsSection(VoidCallback refresh) {
   return SettingsSection(
     title: const Text('OAMap'),
     tiles: [
+      // OAMap 0017: 앱 안 천지인 자판
+      if (kOamapCheonjiin)
+        SettingsTile.switchTile(
+          title: const Text('천지인 자판 쓰기(앱 안에서 한글 치기)'),
+          initialValue: oamapCjOn,
+          onToggle: (v) => save(kOamapCjOnKey, v),
+        ),
+      if (kOamapCheonjiin && oamapCjOn)
+        SettingsTile.switchTile(
+          title: const Text('치는 글자를 한 글자씩 바로 보여 주기'),
+          initialValue: oamapCjPreview,
+          onToggle: (v) => save(kOamapCjPreviewKey, v),
+        ),
       SettingsTile.switchTile(
         title: const Text('자판 열면 화면 속도 낮춤(한글 입력 빠르게)'),
         initialValue: oamapTypingLowFps,

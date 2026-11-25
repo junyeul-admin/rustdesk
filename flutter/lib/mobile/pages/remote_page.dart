@@ -25,6 +25,7 @@ import '../../models/shortcut_model.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
+import '../../oamap/oamap_cj_panel.dart'; // OAMap 0017
 import '../../oamap/oamap_typing.dart'; // OAMap 0008
 import '../../oamap/oamap_cursor.dart'; // OAMap 0011
 import '../../oamap/oamap_pan.dart'; // OAMap 0005
@@ -114,6 +115,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   final FocusNode _mobileFocusNode = FocusNode();
   final FocusNode _physicalFocusNode = FocusNode();
   var _showEdit = false; // use soft keyboard
+  var _cjShow = false; // OAMap 0017: 천지인 자판이 떠 있는가
+  var _cjPhoneOnce = false; // OAMap 0017: 이번 한 번만 폰 자판으로
 
   Worker? _waylandKeyboardGateWorker;
   bool _waylandKeyboardGateInitialized = false;
@@ -490,12 +493,44 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         connectionId: sessionId.toString(),
         ffi: gFFI,
         onEnable: () async {
-          _openKeyboardUnlocked();
+          _openKeyboardAfterGate();
         },
       );
       return;
     }
+    _openKeyboardAfterGate();
+  }
+
+  // OAMap 0017: 문(Wayland 확인)을 지난 뒤 어느 자판을 열지 고른다.
+  //   천지인을 켜 두었으면 우리 자판 · 껐으면 예전 그대로 폰 자판.
+  void _openKeyboardAfterGate() {
+    if (oamapCjOn && !_cjPhoneOnce) {
+      _openCjKeyboard();
+      return;
+    }
+    _cjPhoneOnce = false;
     _openKeyboardUnlocked();
+  }
+
+  // OAMap 0017: 자판 단추 → 천지인 자판(설정에서 끄면 예전처럼 폰 자판)
+  //   폰 자판이 떠 있으면 먼저 내린다 — 두 자판이 같이 뜨면 화면을 가린다.
+  void _openCjKeyboard() {
+    inputModel.keyboardInputAllowed = true;
+    gFFI.invokeMethod("enable_soft_keyboard", false);
+    _mobileFocusNode.unfocus();
+    _physicalFocusNode.requestFocus();
+    setState(() {
+      _showEdit = false;
+      _cjShow = true;
+    });
+  }
+
+  // 천지인 자판의 [!#1] [한/영] [$] — 폰 자판으로 넘어간다(영문·특수문자·음성)
+  //   이 한 번만 폰 자판으로 간다(다음에 자판 단추를 누르면 다시 천지인).
+  void _cjToPhoneIme() {
+    _cjPhoneOnce = true;
+    setState(() => _cjShow = false);
+    openKeyboard();
   }
 
   void _openKeyboardUnlocked() {
@@ -521,11 +556,17 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     });
   }
 
-  Widget _bottomWidget() => _showGestureHelp
-      ? getGestureHelp()
-      : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
-          ? getBottomAppBar()
-          : Offstage());
+  Widget _bottomWidget() => _cjShow // OAMap 0017: 천지인 자판이 바닥을 차지한다
+      ? OamapCjPanel(
+          ffi: gFFI,
+          onPhoneIme: _cjToPhoneIme,
+          onClose: () => setState(() => _cjShow = false),
+        )
+      : (_showGestureHelp
+          ? getGestureHelp()
+          : (_showBar && gFFI.ffiModel.pi.displays.isNotEmpty
+              ? getBottomAppBar()
+              : Offstage()));
 
   @override
   Widget build(BuildContext context) {
